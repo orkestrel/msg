@@ -1,17 +1,17 @@
-# Msg
+# MSG
 
 > A zero-dependency parser for Outlook `.msg` (CFB/OLE2 compound binary) and
 > `.eml` (RFC 2822 / MIME) email files — extracts headers, bodies,
 > recipients, and attachments into typed structures, with `.msg` round-trip
-> rebuild. `MsgReader` walks a CFB compound file's sector/property chains
+> rebuild. `MSGReader` walks a CFB compound file's sector/property chains
 > directly with `DataView`, extracting message fields, recipients, and
 > attachments (every offset bounds-checked, every chain cycle-guarded — a
-> malformed input throws a typed `MsgError` rather than a raw `RangeError`).
-> `MsgBurner` is the inverse: it reconstitutes a flat CFB entry list back
+> malformed input throws a typed `MSGError` rather than a raw `RangeError`).
+> `MSGBurner` is the inverse: it reconstitutes a flat CFB entry list back
 > into a valid compound binary, used to extract an embedded `.msg`
 > attachment as a standalone file. `EmailParser` unifies both formats behind
 > one call: it sniffs `.eml` vs `.msg` from a file name, MIME type, or the
-> CFB magic header, and returns a `Result<EmailChain, MsgError>` so a
+> CFB magic header, and returns a `Result<EmailChain, MSGError>` so a
 > malformed file never throws across that boundary. A pure-ES encoding layer
 > (Base64, UTF-8, Latin-1, Windows-1252, quoted-printable, RFC 2047 encoded
 > words) backs both formats without a `TextDecoder` dependency, so the whole
@@ -43,35 +43,35 @@ if (isSuccess(result)) {
 | `Success<T>`            | interface | `{ success: true, value }` — a successful `Result`.                                                                          |
 | `Failure<E>`            | interface | `{ success: false, error }` — a failed `Result`.                                                                             |
 | `Result<T, E>`          | type      | `Success<T> \| Failure<E>` — discriminated union for a safe operation outcome.                                               |
-| `MsgEncoding`           | type      | `'utf-8' \| 'utf-16le' \| 'windows-1252' \| 'latin1'` — decode encoding for non-Unicode MSG strings and MIME part bodies.    |
-| `MsgErrorCode`          | type      | `'UNSUPPORTED' \| 'MALFORMED' \| 'CYCLE' \| 'RANGE' \| 'BURN'` — machine-readable {@link MsgError} classification.           |
-| `MsgDirectoryEntryType` | type      | `'root' \| 'directory' \| 'document' \| 'unallocated'` — CFB directory entry lifecycle type.                                 |
-| `MsgFieldType`          | type      | `'string' \| 'unicode' \| 'binary' \| 'time' \| 'integer' \| 'boolean'` — MAPI property data type tag.                       |
-| `MsgRecipientRole`      | type      | `'to' \| 'cc' \| 'bcc'` — recipient role in a message.                                                                       |
-| `MsgDirectoryEntry`     | interface | `{ type, name, previousProperty, nextProperty, childProperty, startBlock, sizeBlock, children? }` — one CFB directory entry. |
-| `MsgMutableFieldData`   | interface | Internal mutable field accumulator narrowed to `MsgFieldData` at the public boundary.                                        |
-| `MsgNameIdEntry`        | interface | `{ useName, name?, propertySet?, propertyLid? }` — resolved named property entry.                                            |
-| `MsgBurnerEntry`        | interface | `{ name, type, length, binaryProvider?, children? }` — flat CFB entry descriptor for `MsgBurner`.                            |
-| `MsgBurnerLiteEntry`    | interface | Internal red-black tree + sector metadata wrapping one `MsgBurnerEntry` during burn.                                         |
-| `MsgBurnerInterface`    | interface | The CFB binary writer contract — `burn` reconstitutes entries into a CFB byte stream.                                        |
-| `MsgFieldData`          | interface | Parsed field data for a root message, attachment, or recipient (subject, body, headers, attachments, recipients, ...).       |
-| `MsgAttachment`         | interface | `{ fileName, content }` — extracted attachment binary content.                                                               |
-| `MsgReaderOptions`      | interface | `{ encoding? }` — non-Unicode string decode encoding (default `'windows-1252'`).                                             |
-| `MsgReaderInterface`    | interface | The stateful `.msg` file reader contract — `parse` / `attachment` / `burn`.                                                  |
+| `MSGEncoding`           | type      | `'utf-8' \| 'utf-16le' \| 'windows-1252' \| 'latin1'` — decode encoding for non-Unicode MSG strings and MIME part bodies.    |
+| `MSGErrorCode`          | type      | `'UNSUPPORTED' \| 'MALFORMED' \| 'CYCLE' \| 'RANGE' \| 'BURN'` — machine-readable {@link MSGError} classification.           |
+| `MSGDirectoryEntryType` | type      | `'root' \| 'directory' \| 'document' \| 'unallocated'` — CFB directory entry lifecycle type.                                 |
+| `MSGFieldType`          | type      | `'string' \| 'unicode' \| 'binary' \| 'time' \| 'integer' \| 'boolean'` — MAPI property data type tag.                       |
+| `MSGRecipientRole`      | type      | `'to' \| 'cc' \| 'bcc'` — recipient role in a message.                                                                       |
+| `MSGDirectoryEntry`     | interface | `{ type, name, previousProperty, nextProperty, childProperty, startBlock, sizeBlock, children? }` — one CFB directory entry. |
+| `MSGMutableFieldData`   | interface | Internal mutable field accumulator narrowed to `MSGFieldData` at the public boundary.                                        |
+| `MSGNameIdEntry`        | interface | `{ useName, name?, propertySet?, propertyLid? }` — resolved named property entry.                                            |
+| `MSGBurnerEntry`        | interface | `{ name, type, length, binaryProvider?, children? }` — flat CFB entry descriptor for `MSGBurner`.                            |
+| `MSGBurnerLiteEntry`    | interface | Internal red-black tree + sector metadata wrapping one `MSGBurnerEntry` during burn.                                         |
+| `MSGBurnerInterface`    | interface | The CFB binary writer contract — `burn` reconstitutes entries into a CFB byte stream.                                        |
+| `MSGFieldData`          | interface | Parsed field data for a root message, attachment, or recipient (subject, body, headers, attachments, recipients, ...).       |
+| `MSGAttachment`         | interface | `{ fileName, content }` — extracted attachment binary content.                                                               |
+| `MSGReaderOptions`      | interface | `{ encoding? }` — non-Unicode string decode encoding (default `'windows-1252'`).                                             |
+| `MSGReaderInterface`    | interface | The stateful `.msg` file reader contract — `parse` / `attachment` / `burn`.                                                  |
 | `EmailFormat`           | type      | `'eml' \| 'msg'` — supported email file format.                                                                              |
-| `MimeHeader`            | interface | `{ value, params }` — one parsed MIME header with its parameter map.                                                         |
-| `MimePart`              | interface | `{ headers, body, parts }` — recursive MIME part tree node.                                                                  |
+| `MIMEHeader`            | interface | `{ value, params }` — one parsed MIME header with its parameter map.                                                         |
+| `MIMEPart`              | interface | `{ headers, body, parts }` — recursive MIME part tree node.                                                                  |
 | `EmailAttachment`       | interface | `{ name, mimeType, size, bytes }` — extracted email attachment.                                                              |
 | `EmailMessage`          | interface | `{ from, to, cc, subject, date, text, html, attachments }` — structured extracted message.                                   |
 | `EmailChain`            | interface | `{ format, messages }` — parsed email chain from a single file.                                                              |
 | `EmailInput`            | interface | `{ bytes, name?, mime? }` — raw email input handed to an `EmailParser`.                                                      |
 | `EmailParserOptions`    | interface | `{ encoding? }` — MIME part body decode encoding (default `'utf-8'`).                                                        |
-| `EmailParserInterface`  | interface | The email file parser contract — `parse` an `EmailInput` into a `Result<EmailChain, MsgError>`, plus `options`.              |
+| `EmailParserInterface`  | interface | The email file parser contract — `parse` an `EmailInput` into a `Result<EmailChain, MSGError>`, plus `options`.              |
 
 ```ts
-import type { EmailParserOptions, MsgReaderOptions } from '@orkestrel/msg'
+import type { EmailParserOptions, MSGReaderOptions } from '@orkestrel/msg'
 
-const readerOptions: MsgReaderOptions = { encoding: 'windows-1252' }
+const readerOptions: MSGReaderOptions = { encoding: 'windows-1252' }
 const parserOptions: EmailParserOptions = { encoding: 'utf-8' }
 ```
 
@@ -139,7 +139,7 @@ const parserOptions: EmailParserOptions = { encoding: 'utf-8' }
 | `FALLBACK_CHARSET`                  | const | Default charset for decoding MIME part bodies (`'utf-8'`).            |
 | `FALLBACK_ATTACHMENT_NAME`          | const | Default file name for attachments without an explicit name.           |
 | `MIME_EXTENSIONS`                   | const | Common MIME types to file extensions mapping.                         |
-| `MIME_MAX_DEPTH`                    | const | Maximum multipart nesting depth accepted by `parseMimePart` (50).     |
+| `MIME_MAX_DEPTH`                    | const | Maximum multipart nesting depth accepted by `parseMIMEPart` (50).     |
 | `WINDOWS_1252_HIGH`                 | const | Windows-1252 high-byte (0x80-0x9F) to Unicode code point lookup.      |
 | `UTF8_SEQUENCE_MINIMUM`             | const | Minimum valid code point per UTF-8 sequence length (overlong guard).  |
 
@@ -152,7 +152,7 @@ import {
 } from '@orkestrel/msg'
 
 MSG_FILE_HEADER.length // 8 - the CFB magic header byte count
-MIME_MAX_DEPTH // 50 - guards parseMimePart against a hostile multipart tree
+MIME_MAX_DEPTH // 50 - guards parseMIMEPart against a hostile multipart tree
 MSG_BURNER_NAME_MAX // 31 - max UTF-16 units in a CFB directory entry name
 FALLBACK_CHARSET // 'utf-8' - default MIME part body charset
 ```
@@ -161,16 +161,16 @@ FALLBACK_CHARSET // 'utf-8' - default MIME part body charset
 
 | API          | Kind     | Summary                                                      |
 | ------------ | -------- | ------------------------------------------------------------ |
-| `MsgError`   | class    | Carries a `MsgErrorCode` + optional `context`.               |
-| `isMsgError` | function | Narrow a caught (or `Failure.error`) value to an `MsgError`. |
+| `MSGError`   | class    | Carries a `MSGErrorCode` + optional `context`.               |
+| `isMSGError` | function | Narrow a caught (or `Failure.error`) value to an `MSGError`. |
 
 ```ts
-import { isMsgError, MsgError } from '@orkestrel/msg'
+import { isMSGError, MSGError } from '@orkestrel/msg'
 
 try {
-	throw new MsgError('MALFORMED', 'bad Base64 in a MIME part', { char: '#' })
+	throw new MSGError('MALFORMED', 'bad Base64 in a MIME part', { char: '#' })
 } catch (error) {
-	if (isMsgError(error)) error.code // 'MALFORMED'
+	if (isMSGError(error)) error.code // 'MALFORMED'
 }
 ```
 
@@ -183,32 +183,32 @@ try {
 | `isSuccess`             | function | Narrow a `Result` to `Success`.                                             |
 | `isFailure`             | function | Narrow a `Result` to `Failure`.                                             |
 | `isRecord`              | function | Narrow an unknown value to a plain record.                                  |
-| `isMsgFile`             | function | Validate that a `DataView` starts with the CFB magic header.                |
+| `isMSGFile`             | function | Validate that a `DataView` starts with the CFB magic header.                |
 | `removeTrailingNull`    | function | Remove trailing null characters from a string.                              |
-| `readUtf16String`       | function | Read a UTF-16LE string from a `DataView`.                                   |
-| `readAnsiString`        | function | Read a non-Unicode (PT_STRING8) string, decoded per `MsgEncoding`.          |
-| `fileTimeToUtcString`   | function | Convert a Windows FILETIME to a UTC date string.                            |
+| `readUTF16String`       | function | Read a UTF-16LE string from a `DataView`.                                   |
+| `readANSIString`        | function | Read a non-Unicode (PT_STRING8) string, decoded per `MSGEncoding`.          |
+| `fileTimeToUTCString`   | function | Convert a Windows FILETIME to a UTC date string.                            |
 | `toHexLower`            | function | Convert a number to a lowercase, zero-padded hex string.                    |
-| `msftUuidStringify`     | function | Stringify a mixed-endian Microsoft UUID from a byte array.                  |
+| `msftUUIDStringify`     | function | Stringify a mixed-endian Microsoft UUID from a byte array.                  |
 | `roundUpToMultiple`     | function | Round a value up to the nearest multiple of a power-of-2 boundary.          |
 | `sectorsNeeded`         | function | Compute how many sectors are needed to hold a given byte count.             |
-| `compareCfbName`        | function | CFB-compliant directory name comparator.                                    |
+| `compareCFBName`        | function | CFB-compliant directory name comparator.                                    |
 | `decodeBase64`          | function | Decode a Base64 string into raw bytes without `atob`.                       |
-| `encodeUtf8`            | function | Encode a string into UTF-8 bytes, handling surrogate pairs.                 |
-| `decodeUtf8`            | function | Decode UTF-8 bytes into a string, WHATWG-style (invalid → U+FFFD).          |
+| `encodeUTF8`            | function | Encode a string into UTF-8 bytes, handling surrogate pairs.                 |
+| `decodeUTF8`            | function | Decode UTF-8 bytes into a string, WHATWG-style (invalid → U+FFFD).          |
 | `decodeLatin1`          | function | Decode Latin-1 (ISO-8859-1) bytes into a string.                            |
 | `decodeWindows1252`     | function | Decode Windows-1252 bytes into a string.                                    |
-| `resolveEncoding`       | function | Resolve a free-form charset label to a supported `MsgEncoding`.             |
+| `resolveEncoding`       | function | Resolve a free-form charset label to a supported `MSGEncoding`.             |
 | `isEmailFormat`         | function | Narrow an unknown value to a valid `EmailFormat`.                           |
 | `detectFormat`          | function | Derive the `EmailFormat` from a file name and/or MIME type.                 |
-| `parseMimeHeaders`      | function | Parse headers from a raw RFC 2822 / MIME header text block.                 |
-| `parseMimePart`         | function | Parse a raw RFC 2822 / MIME text string into a `MimePart` tree.             |
-| `decodeMimeEncoding`    | function | Decode a MIME-encoded body string into a raw byte array.                    |
-| `decodeMimeText`        | function | Decode a MIME-encoded body into a text string, given an encoding + charset. |
-| `decodeMimeWords`       | function | Decode RFC 2047 encoded words (`=?charset?B/Q?...?=`) in header values.     |
+| `parseMIMEHeaders`      | function | Parse headers from a raw RFC 2822 / MIME header text block.                 |
+| `parseMIMEPart`         | function | Parse a raw RFC 2822 / MIME text string into a `MIMEPart` tree.             |
+| `decodeMIMEEncoding`    | function | Decode a MIME-encoded body string into a raw byte array.                    |
+| `decodeMIMEText`        | function | Decode a MIME-encoded body into a text string, given an encoding + charset. |
+| `decodeMIMEWords`       | function | Decode RFC 2047 encoded words (`=?charset?B/Q?...?=`) in header values.     |
 | `formatEmailAddress`    | function | Format a name and email into a standard composite address.                  |
-| `extractMessageFromMsg` | function | Extract a single `EmailMessage` from a parsed `MsgReader`.                  |
-| `extractMessage`        | function | Extract a single `EmailMessage` from a top-level `MimePart`.                |
+| `extractMessageFromMSG` | function | Extract a single `EmailMessage` from a parsed `MSGReader`.                  |
+| `extractMessage`        | function | Extract a single `EmailMessage` from a top-level `MIMEPart`.                |
 | `inferExtension`        | function | Infer a file extension from a MIME type and/or file name.                   |
 
 ```ts
@@ -224,12 +224,12 @@ isFailure(failed) // true
 
 ```ts
 import {
-	compareCfbName,
-	fileTimeToUtcString,
-	isMsgFile,
-	msftUuidStringify,
-	readAnsiString,
-	readUtf16String,
+	compareCFBName,
+	fileTimeToUTCString,
+	isMSGFile,
+	msftUUIDStringify,
+	readANSIString,
+	readUTF16String,
 	removeTrailingNull,
 	roundUpToMultiple,
 	sectorsNeeded,
@@ -237,31 +237,31 @@ import {
 } from '@orkestrel/msg'
 
 const view = new DataView(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]).buffer)
-isMsgFile(view) // true - CFB magic header present
+isMSGFile(view) // true - CFB magic header present
 removeTrailingNull('subject\0\0') // 'subject'
-readUtf16String(view, 0, 4) // decodes 4 UTF-16 code units from the header bytes
-readAnsiString(new Uint8Array([0x41, 0x42]), 'latin1') // 'AB'
-fileTimeToUtcString(0, 0) // FILETIME(0,0) as a UTC date string
+readUTF16String(view, 0, 4) // decodes 4 UTF-16 code units from the header bytes
+readANSIString(new Uint8Array([0x41, 0x42]), 'latin1') // 'AB'
+fileTimeToUTCString(0, 0) // FILETIME(0,0) as a UTC date string
 toHexLower(255, 2) // 'ff'
-msftUuidStringify(new Uint8Array(16), 0) // '00000000-0000-0000-0000-000000000000'
+msftUUIDStringify(new Uint8Array(16), 0) // '00000000-0000-0000-0000-000000000000'
 roundUpToMultiple(10, 8) // 16
 sectorsNeeded(10, 512) // 1
-compareCfbName('a', 'ab') // negative - shorter name sorts first
+compareCFBName('a', 'ab') // negative - shorter name sorts first
 ```
 
 ```ts
 import {
 	decodeBase64,
 	decodeLatin1,
-	decodeUtf8,
+	decodeUTF8,
 	decodeWindows1252,
-	encodeUtf8,
+	encodeUTF8,
 	resolveEncoding,
 } from '@orkestrel/msg'
 
 decodeBase64('SGVsbG8=') // Uint8Array [72, 101, 108, 108, 111]
-encodeUtf8('A') // Uint8Array [65]
-decodeUtf8(new Uint8Array([65])) // 'A'
+encodeUTF8('A') // Uint8Array [65]
+decodeUTF8(new Uint8Array([65])) // 'A'
 decodeLatin1(new Uint8Array([0xe9])) // 'é'
 decodeWindows1252(new Uint8Array([0x93])) // '“'
 resolveEncoding('ISO-8859-1') // 'latin1'
@@ -269,54 +269,54 @@ resolveEncoding('ISO-8859-1') // 'latin1'
 
 ```ts
 import {
-	decodeMimeEncoding,
-	decodeMimeText,
+	decodeMIMEEncoding,
+	decodeMIMEText,
 	detectFormat,
 	extractMessage,
-	extractMessageFromMsg,
+	extractMessageFromMSG,
 	formatEmailAddress,
 	inferExtension,
 	isEmailFormat,
-	parseMimeHeaders,
-	parseMimePart,
+	parseMIMEHeaders,
+	parseMIMEPart,
 } from '@orkestrel/msg'
-import { createMsgReader } from '@orkestrel/msg'
+import { createMSGReader } from '@orkestrel/msg'
 
 isEmailFormat('eml') // true
 detectFormat('message.eml', undefined) // 'eml'
 formatEmailAddress('Ada Lovelace', 'ada@example.com') // 'Ada Lovelace <ada@example.com>'
-const headers = parseMimeHeaders('Content-Type: text/plain; charset=utf-8\n')
+const headers = parseMIMEHeaders('Content-Type: text/plain; charset=utf-8\n')
 headers.get('content-type')?.value // 'text/plain'
-const root = parseMimePart('Content-Type: text/plain\n\nhello')
+const root = parseMIMEPart('Content-Type: text/plain\n\nhello')
 extractMessage(root).text // 'hello'
-decodeMimeEncoding('aGVsbG8=', 'base64') // Uint8Array - decoded 'hello'
-decodeMimeText('aGVsbG8=', 'base64', 'utf-8') // 'hello'
+decodeMIMEEncoding('aGVsbG8=', 'base64') // Uint8Array - decoded 'hello'
+decodeMIMEText('aGVsbG8=', 'base64', 'utf-8') // 'hello'
 inferExtension('image/png') // '.png'
 
-const reader = createMsgReader(buffer)
-extractMessageFromMsg(reader) // structured EmailMessage from a parsed .msg
+const reader = createMSGReader(buffer)
+extractMessageFromMSG(reader) // structured EmailMessage from a parsed .msg
 ```
 
 ### Factories
 
 | API                 | Kind     | Builds…                                                    |
 | ------------------- | -------- | ---------------------------------------------------------- |
-| `createMsgReader`   | function | A working `MsgReaderInterface`, backed by `MsgReader`.     |
-| `createMsgBurner`   | function | A working `MsgBurnerInterface`, backed by `MsgBurner`.     |
+| `createMSGReader`   | function | A working `MSGReaderInterface`, backed by `MSGReader`.     |
+| `createMSGBurner`   | function | A working `MSGBurnerInterface`, backed by `MSGBurner`.     |
 | `createEmailParser` | function | A working `EmailParserInterface`, backed by `EmailParser`. |
 
 ```ts
-import { createMsgReader } from '@orkestrel/msg'
+import { createMSGReader } from '@orkestrel/msg'
 
-const reader = createMsgReader(buffer)
+const reader = createMSGReader(buffer)
 const data = reader.parse()
 console.log(data.kind)
 ```
 
 ```ts
-import { createMsgBurner } from '@orkestrel/msg'
+import { createMSGBurner } from '@orkestrel/msg'
 
-const burner = createMsgBurner()
+const burner = createMSGBurner()
 const binary = burner.burn(entries)
 ```
 
@@ -334,52 +334,52 @@ if (isSuccess(result)) {
 
 | API           | Kind  | Summary                                                                                              |
 | ------------- | ----- | ---------------------------------------------------------------------------------------------------- |
-| `MsgReader`   | class | The stateful `.msg` file reader — implements `MsgReaderInterface`, parses CFB/OLE2 compound files.   |
-| `MsgBurner`   | class | The CFB binary writer — implements `MsgBurnerInterface`, reconstitutes entries into a compound file. |
+| `MSGReader`   | class | The stateful `.msg` file reader — implements `MSGReaderInterface`, parses CFB/OLE2 compound files.   |
+| `MSGBurner`   | class | The CFB binary writer — implements `MSGBurnerInterface`, reconstitutes entries into a compound file. |
 | `EmailParser` | class | The email file parser — implements `EmailParserInterface`, unifies `.eml` and `.msg` into a chain.   |
 
 ## Methods
 
-The public methods of `MsgReaderInterface`, `MsgBurnerInterface`, and
+The public methods of `MSGReaderInterface`, `MSGBurnerInterface`, and
 `EmailParserInterface` — each class's full method surface (AGENTS §22). The
 `readonly options` data member on `EmailParserInterface` stays off the
 method table below.
 
-#### `MsgReaderInterface`
+#### `MSGReaderInterface`
 
 | Method       | Returns         | Behavior                                                                                                                                                                                                                    |
 | ------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `parse`      | `MsgFieldData`  | Parse the MSG file and return extracted field data (memoized — a second call returns the same result). Throws `MsgError` with code `UNSUPPORTED`, `MALFORMED`, `CYCLE`, or `RANGE` when the compound file cannot be parsed. |
-| `attachment` | `MsgAttachment` | Read attachment binary content by zero-based index. Throws `MsgError` with code `RANGE` when the index is out of bounds.                                                                                                    |
-| `burn`       | `Uint8Array`    | Rebuild the parsed MSG as a standalone CFB/.msg binary. Throws `MsgError` with code `BURN` when the parsed structure cannot be reconstituted.                                                                               |
+| `parse`      | `MSGFieldData`  | Parse the MSG file and return extracted field data (memoized — a second call returns the same result). Throws `MSGError` with code `UNSUPPORTED`, `MALFORMED`, `CYCLE`, or `RANGE` when the compound file cannot be parsed. |
+| `attachment` | `MSGAttachment` | Read attachment binary content by zero-based index. Throws `MSGError` with code `RANGE` when the index is out of bounds.                                                                                                    |
+| `burn`       | `Uint8Array`    | Rebuild the parsed MSG as a standalone CFB/.msg binary. Throws `MSGError` with code `BURN` when the parsed structure cannot be reconstituted.                                                                               |
 
 ```ts
-import { createMsgReader, isMsgError } from '@orkestrel/msg'
+import { createMSGReader, isMSGError } from '@orkestrel/msg'
 
-const reader = createMsgReader(buffer)
-const data = reader.parse() // MsgFieldData - subject, body, attachments, recipients
+const reader = createMSGReader(buffer)
+const data = reader.parse() // MSGFieldData - subject, body, attachments, recipients
 const first = reader.attachment(0) // { fileName, content } for the first attachment
 const rebuilt = reader.burn() // standalone CFB/.msg binary
 
 try {
-	createMsgReader(new Uint8Array([1, 2, 3])).parse()
+	createMSGReader(new Uint8Array([1, 2, 3])).parse()
 } catch (error) {
-	if (isMsgError(error) && error.code === 'UNSUPPORTED') {
+	if (isMSGError(error) && error.code === 'UNSUPPORTED') {
 		console.log('not a recognized MSG file')
 	}
 }
 ```
 
-#### `MsgBurnerInterface`
+#### `MSGBurnerInterface`
 
 | Method | Returns      | Behavior                                                                                                                                                                                    |
 | ------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `burn` | `Uint8Array` | Write a flat CFB entry list (root storage at index 0) to a complete CFB byte stream. Throws `MsgError` with code `BURN` when an entry name exceeds `MSG_BURNER_NAME_MAX` UTF-16 code units. |
+| `burn` | `Uint8Array` | Write a flat CFB entry list (root storage at index 0) to a complete CFB byte stream. Throws `MSGError` with code `BURN` when an entry name exceeds `MSG_BURNER_NAME_MAX` UTF-16 code units. |
 
 ```ts
-import { createMsgBurner } from '@orkestrel/msg'
+import { createMSGBurner } from '@orkestrel/msg'
 
-const burner = createMsgBurner()
+const burner = createMSGBurner()
 const binary = burner.burn([{ name: 'Root Entry', type: 5, length: 0, children: [] }])
 ```
 
@@ -387,7 +387,7 @@ const binary = burner.burn([{ name: 'Root Entry', type: 5, length: 0, children: 
 
 | Method  | Returns                        | Behavior                                                                                                                                                                                                                                    |
 | ------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `parse` | `Result<EmailChain, MsgError>` | Parse raw `.eml` or `.msg` bytes into a structured `EmailChain`, wrapped as `Success`/`Failure` — never throws. `Failure.error` carries `MsgError` code `UNSUPPORTED` when the format cannot be determined, `MALFORMED` when parsing fails. |
+| `parse` | `Result<EmailChain, MSGError>` | Parse raw `.eml` or `.msg` bytes into a structured `EmailChain`, wrapped as `Success`/`Failure` — never throws. `Failure.error` carries `MSGError` code `UNSUPPORTED` when the format cannot be determined, `MALFORMED` when parsing fails. |
 
 ```ts
 import { createEmailParser, isFailure, isSuccess } from '@orkestrel/msg'

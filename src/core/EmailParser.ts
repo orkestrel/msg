@@ -3,7 +3,7 @@
  *
  * Parses .eml (RFC 2822 / MIME) and .msg (Outlook binary) files
  * into structured EmailMessage objects. Zero dependencies — uses
- * a pure-ES MIME parser for .eml and the built-in MsgReader for .msg.
+ * a pure-ES MIME parser for .eml and the built-in MSGReader for .msg.
  */
 
 import type {
@@ -15,16 +15,16 @@ import type {
 } from './types.js'
 import {
 	detectFormat,
-	parseMimePart,
+	parseMIMEPart,
 	extractMessage,
-	extractMessageFromMsg,
-	isMsgFile,
-	decodeUtf8,
+	extractMessageFromMSG,
+	isMSGFile,
+	decodeUTF8,
 	success,
 	failure,
 } from './helpers.js'
-import { MsgError, isMsgError } from './errors.js'
-import { MsgReader } from './MsgReader.js'
+import { MSGError, isMSGError } from './errors.js'
+import { MSGReader } from './MSGReader.js'
 
 // === EmailParser
 
@@ -59,7 +59,7 @@ export class EmailParser implements EmailParserInterface {
 	 *
 	 * @param input - Raw bytes plus optional name/MIME hints
 	 * @returns A {@link Success} wrapping the parsed {@link EmailChain}, or a
-	 * {@link Failure} wrapping an {@link MsgError} (code `UNSUPPORTED` when
+	 * {@link Failure} wrapping an {@link MSGError} (code `UNSUPPORTED` when
 	 * the format cannot be determined, `MALFORMED` when parsing fails)
 	 *
 	 * @example
@@ -67,17 +67,17 @@ export class EmailParser implements EmailParserInterface {
 	 * const result = parser.parse({ bytes, name: 'message.msg' })
 	 * ```
 	 */
-	parse(input: EmailInput): Result<EmailChain, MsgError> {
+	parse(input: EmailInput): Result<EmailChain, MSGError> {
 		try {
 			const format =
 				detectFormat(input.name, input.mime) ??
-				(isMsgFile(new DataView(input.bytes.buffer, input.bytes.byteOffset, input.bytes.byteLength))
+				(isMSGFile(new DataView(input.bytes.buffer, input.bytes.byteOffset, input.bytes.byteLength))
 					? 'msg'
 					: undefined)
 
 			if (format === undefined) {
 				return failure(
-					new MsgError(
+					new MSGError(
 						'UNSUPPORTED',
 						`"${input.name ?? 'input'}" — only .eml and .msg files are supported`,
 						{
@@ -89,19 +89,19 @@ export class EmailParser implements EmailParserInterface {
 			}
 
 			if (format === 'msg') {
-				const reader = new MsgReader(input.bytes, { encoding: this.#options.encoding })
-				const message = extractMessageFromMsg(reader)
+				const reader = new MSGReader(input.bytes, { encoding: this.#options.encoding })
+				const message = extractMessageFromMSG(reader)
 				return success({ format, messages: [message] })
 			}
 
-			const text = decodeUtf8(input.bytes)
-			const root = parseMimePart(text)
+			const text = decodeUTF8(input.bytes)
+			const root = parseMIMEPart(text)
 			const message = extractMessage(root)
 			return success({ format, messages: [message] })
 		} catch (cause) {
-			if (isMsgError(cause)) return failure(cause)
-			if (cause instanceof Error) return failure(new MsgError('MALFORMED', cause.message))
-			return failure(new MsgError('MALFORMED', 'Failed to parse email input'))
+			if (isMSGError(cause)) return failure(cause)
+			if (cause instanceof Error) return failure(new MSGError('MALFORMED', cause.message))
+			return failure(new MSGError('MALFORMED', 'Failed to parse email input'))
 		}
 	}
 

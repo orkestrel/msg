@@ -1,4 +1,4 @@
-import type { MsgError } from './errors.js'
+import type { MSGError } from './errors.js'
 
 // === Result Pattern
 
@@ -29,12 +29,12 @@ export type Result<T, E = Error> = Success<T> | Failure<E>
  * Supported text encoding for decoding non-Unicode MSG strings and
  * MIME part bodies.
  */
-export type MsgEncoding = 'utf-8' | 'utf-16le' | 'windows-1252' | 'latin1'
+export type MSGEncoding = 'utf-8' | 'utf-16le' | 'windows-1252' | 'latin1'
 
-// === MsgError
+// === MSGError
 
 /**
- * Machine-readable classification for an {@link MsgError}.
+ * Machine-readable classification for an {@link MSGError}.
  *
  * @remarks
  * - `UNSUPPORTED` — the input is not a recognized MSG/EML format
@@ -43,29 +43,29 @@ export type MsgEncoding = 'utf-8' | 'utf-16le' | 'windows-1252' | 'latin1'
  * - `RANGE` — a computed offset, length, or index falls outside the valid bounds
  * - `BURN` — the CFB binary writer could not reconstitute the entry list
  */
-export type MsgErrorCode = 'UNSUPPORTED' | 'MALFORMED' | 'CYCLE' | 'RANGE' | 'BURN'
+export type MSGErrorCode = 'UNSUPPORTED' | 'MALFORMED' | 'CYCLE' | 'RANGE' | 'BURN'
 
-// === MsgReader
+// === MSGReader
 
 /**
  * Lifecycle type of a directory entry in a CFB compound file.
  */
-export type MsgDirectoryEntryType = 'root' | 'directory' | 'document' | 'unallocated'
+export type MSGDirectoryEntryType = 'root' | 'directory' | 'document' | 'unallocated'
 
 /**
  * MAPI property data type tag.
  */
-export type MsgFieldType = 'string' | 'unicode' | 'binary' | 'time' | 'integer' | 'boolean'
+export type MSGFieldType = 'string' | 'unicode' | 'binary' | 'time' | 'integer' | 'boolean'
 
 /**
  * Recipient role in a message.
  */
-export type MsgRecipientRole = 'to' | 'cc' | 'bcc'
+export type MSGRecipientRole = 'to' | 'cc' | 'bcc'
 
 /**
  * CFB directory entry describing a storage or stream in the compound file.
  */
-export interface MsgDirectoryEntry {
+export interface MSGDirectoryEntry {
 	readonly type: number
 	readonly name: string
 	readonly previousProperty: number
@@ -79,14 +79,14 @@ export interface MsgDirectoryEntry {
 /**
  * Internal mutable accumulator used during MSG field extraction.
  * Properties are assigned dynamically via index signature and
- * narrowed to the readonly {@link MsgFieldData} at the public boundary.
+ * narrowed to the readonly {@link MSGFieldData} at the public boundary.
  */
-export interface MsgMutableFieldData {
+export interface MSGMutableFieldData {
 	kind: 'msg' | 'attachment' | 'recipient'
-	attachments?: MsgMutableFieldData[]
-	recipients?: MsgMutableFieldData[]
-	innerMsgContent?: true
-	innerMsgContentFields?: MsgMutableFieldData
+	attachments?: MSGMutableFieldData[]
+	recipients?: MSGMutableFieldData[]
+	innerMSGContent?: true
+	innerMSGContentFields?: MSGMutableFieldData
 	dataId?: number
 	contentLength?: number
 	folderId?: number
@@ -96,7 +96,7 @@ export interface MsgMutableFieldData {
 /**
  * Resolved named property entry from the __nameid_version1.0 storage.
  */
-export interface MsgNameIdEntry {
+export interface MSGNameIdEntry {
 	readonly useName: boolean
 	readonly name?: string
 	readonly propertySet?: string
@@ -107,7 +107,7 @@ export interface MsgNameIdEntry {
  * CFB entry descriptor for the MSG burner (CFB binary writer).
  * Entries form a flat list starting with the root storage at index 0.
  */
-export interface MsgBurnerEntry {
+export interface MSGBurnerEntry {
 	readonly name: string
 	readonly type: number
 	readonly length: number
@@ -118,10 +118,10 @@ export interface MsgBurnerEntry {
 /**
  * Internal lite entry with tree metadata used during CFB burn.
  * Tracks red-black coloring and sector allocation alongside
- * the source MsgBurnerEntry.
+ * the source MSGBurnerEntry.
  */
-export interface MsgBurnerLiteEntry {
-	readonly entry: MsgBurnerEntry
+export interface MSGBurnerLiteEntry {
+	readonly entry: MSGBurnerEntry
 	left: number
 	right: number
 	child: number
@@ -138,16 +138,16 @@ export interface MsgBurnerLiteEntry {
  * @remarks
  * - `burn` — write the entries to a CFB binary
  */
-export interface MsgBurnerInterface {
+export interface MSGBurnerInterface {
 	/**
 	 * Write the entries to a CFB binary.
 	 *
 	 * @param entries - Flat CFB entry descriptor list, root storage at index 0
 	 * @returns Complete CFB byte stream
-	 * @throws {@link MsgError} with code `BURN` when the entry list cannot be
+	 * @throws {@link MSGError} with code `BURN` when the entry list cannot be
 	 * reconstituted into a valid CFB structure
 	 */
-	burn(entries: readonly MsgBurnerEntry[]): Uint8Array
+	burn(entries: readonly MSGBurnerEntry[]): Uint8Array
 }
 
 /**
@@ -161,32 +161,32 @@ export interface MsgBurnerInterface {
  * - `senderEmail` — email address of the sender
  * - `body` — plain text body
  * - `headers` — transport message headers
- * - `bodyHtml` — HTML body (string)
+ * - `bodyHTML` — HTML body (string)
  * - `html` — HTML body (binary)
- * - `compressedRtf` — compressed RTF body (binary)
+ * - `compressedRTF` — compressed RTF body (binary)
  * - `attachments` — child attachment field data
  * - `recipients` — child recipient field data
- * - `innerMsgContent` — true if the attachment is an embedded .msg
- * - `innerMsgContentFields` — parsed fields of the embedded .msg
+ * - `innerMSGContent` — true if the attachment is an embedded .msg
+ * - `innerMSGContentFields` — parsed fields of the embedded .msg
  * - `dataId` — internal CFBF entry index (for attachment binary access)
  * - `contentLength` — attachment binary length
  * - `folderId` — internal CFBF storage index (for embedded msg)
  * - `recipientRole` — recipient type: 'to', 'cc', or 'bcc'
  */
-export interface MsgFieldData {
+export interface MSGFieldData {
 	readonly kind: 'msg' | 'attachment' | 'recipient'
 	// email properties
 	readonly subject?: string
 	readonly senderName?: string
 	readonly senderEmail?: string
 	readonly senderAddressType?: string
-	readonly senderSmtpAddress?: string
-	readonly sentRepresentingSmtpAddress?: string
+	readonly senderSMTPAddress?: string
+	readonly sentRepresentingSMTPAddress?: string
 	readonly body?: string
 	readonly headers?: string
-	readonly bodyHtml?: string
+	readonly bodyHTML?: string
 	readonly html?: Uint8Array
-	readonly compressedRtf?: Uint8Array
+	readonly compressedRTF?: Uint8Array
 	readonly messageClass?: string
 	readonly messageFlags?: number
 	readonly messageId?: string
@@ -198,8 +198,8 @@ export interface MsgFieldData {
 	readonly creationTime?: string
 	readonly lastModificationTime?: string
 	readonly lastModifierName?: string
-	readonly creatorSmtpAddress?: string
-	readonly lastModifierSmtpAddress?: string
+	readonly creatorSMTPAddress?: string
+	readonly lastModifierSMTPAddress?: string
 	readonly preview?: string
 	readonly conversationTopic?: string
 	readonly normalizedSubject?: string
@@ -208,7 +208,7 @@ export interface MsgFieldData {
 	readonly email?: string
 	readonly addressType?: string
 	readonly smtpAddress?: string
-	readonly recipientRole?: MsgRecipientRole
+	readonly recipientRole?: MSGRecipientRole
 	// attachment properties
 	readonly extension?: string
 	readonly fileNameShort?: string
@@ -219,10 +219,10 @@ export interface MsgFieldData {
 	readonly contentLength?: number
 	readonly dataId?: number
 	readonly folderId?: number
-	readonly innerMsgContent?: true
-	readonly innerMsgContentFields?: MsgFieldData
-	readonly attachments?: readonly MsgFieldData[]
-	readonly recipients?: readonly MsgFieldData[]
+	readonly innerMSGContent?: true
+	readonly innerMSGContentFields?: MSGFieldData
+	readonly attachments?: readonly MSGFieldData[]
+	readonly recipients?: readonly MSGFieldData[]
 	// contact properties
 	readonly departmentName?: string
 	readonly middleName?: string
@@ -292,19 +292,19 @@ export interface MsgFieldData {
  * - `fileName` — the attachment file name
  * - `content` — the raw binary content
  */
-export interface MsgAttachment {
+export interface MSGAttachment {
 	readonly fileName: string
 	readonly content: Uint8Array
 }
 
 /**
- * Configuration for creating an MsgReader.
+ * Configuration for creating an MSGReader.
  *
  * @remarks
  * - `encoding` — encoding for non-Unicode (PT_STRING8) strings (default `'windows-1252'`)
  */
-export interface MsgReaderOptions {
-	readonly encoding?: MsgEncoding
+export interface MSGReaderOptions {
+	readonly encoding?: MSGEncoding
 }
 
 /**
@@ -315,30 +315,30 @@ export interface MsgReaderOptions {
  * - `attachment` — read attachment binary content by index
  * - `burn` — rebuild the parsed MSG as a standalone CFB/.msg binary
  */
-export interface MsgReaderInterface {
+export interface MSGReaderInterface {
 	/**
 	 * Parse the MSG file and return extracted field data.
 	 *
 	 * @returns Root message field data with nested attachments and recipients
-	 * @throws {@link MsgError} with code `UNSUPPORTED`, `MALFORMED`, `CYCLE`,
+	 * @throws {@link MSGError} with code `UNSUPPORTED`, `MALFORMED`, `CYCLE`,
 	 * or `RANGE` when the compound file cannot be parsed
 	 */
-	parse(): MsgFieldData
+	parse(): MSGFieldData
 
 	/**
 	 * Read attachment binary content by index.
 	 *
 	 * @param index - Zero-based index into the parsed attachment list
 	 * @returns File name and raw binary content
-	 * @throws {@link MsgError} with code `RANGE` when the index is out of bounds
+	 * @throws {@link MSGError} with code `RANGE` when the index is out of bounds
 	 */
-	attachment(index: number): MsgAttachment
+	attachment(index: number): MSGAttachment
 
 	/**
 	 * Rebuild the parsed MSG as a standalone CFB/.msg binary.
 	 *
 	 * @returns Complete CFB byte stream
-	 * @throws {@link MsgError} with code `BURN` when the parsed structure
+	 * @throws {@link MSGError} with code `BURN` when the parsed structure
 	 * cannot be reconstituted
 	 */
 	burn(): Uint8Array
@@ -358,7 +358,7 @@ export type EmailFormat = 'eml' | 'msg'
  * - `value` — primary header value (before first semicolon)
  * - `params` — key-value parameter map (e.g. charset, boundary)
  */
-export interface MimeHeader {
+export interface MIMEHeader {
 	readonly value: string
 	readonly params: ReadonlyMap<string, string>
 }
@@ -371,10 +371,10 @@ export interface MimeHeader {
  * - `body` — raw body text (empty for multipart containers)
  * - `parts` — child parts for multipart types
  */
-export interface MimePart {
-	readonly headers: ReadonlyMap<string, MimeHeader>
+export interface MIMEPart {
+	readonly headers: ReadonlyMap<string, MIMEHeader>
 	readonly body: string
-	readonly parts: readonly MimePart[]
+	readonly parts: readonly MIMEPart[]
 }
 
 /**
@@ -450,7 +450,7 @@ export interface EmailInput {
  * - `encoding` — encoding for decoding MIME part bodies (default `'utf-8'`)
  */
 export interface EmailParserOptions {
-	readonly encoding?: MsgEncoding
+	readonly encoding?: MSGEncoding
 }
 
 /**
@@ -466,10 +466,10 @@ export interface EmailParserInterface {
 	 *
 	 * @param input - Raw bytes plus optional name/MIME hints
 	 * @returns A {@link Success} wrapping the parsed {@link EmailChain}, or a
-	 * {@link Failure} wrapping an {@link MsgError} (code `UNSUPPORTED` when
+	 * {@link Failure} wrapping an {@link MSGError} (code `UNSUPPORTED` when
 	 * the format cannot be determined, `MALFORMED` when parsing fails)
 	 */
-	parse(input: EmailInput): Result<EmailChain, MsgError>
+	parse(input: EmailInput): Result<EmailChain, MSGError>
 
 	readonly options: EmailParserOptions
 }

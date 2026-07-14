@@ -1,56 +1,56 @@
 import type {
-	MsgReaderInterface,
-	MsgReaderOptions,
-	MsgBurnerInterface,
+	MSGReaderInterface,
+	MSGReaderOptions,
+	MSGBurnerInterface,
 	EmailParserInterface,
 	EmailParserOptions,
 } from './types.js'
-import { MsgReader } from './MsgReader.js'
-import { MsgBurner } from './MsgBurner.js'
+import { MSGReader } from './MSGReader.js'
+import { MSGBurner } from './MSGBurner.js'
 import { EmailParser } from './EmailParser.js'
 
-// === MsgReader
+// === MSGReader
 
 /**
  * Create a new .msg file reader.
  *
  * @param buffer - Raw .msg file bytes
  * @param options - Optional reader configuration
- * @returns A working {@link MsgReaderInterface}
+ * @returns A working {@link MSGReaderInterface}
  *
  * @example
  * ```ts
- * import { createMsgReader } from '@src/core'
+ * import { createMSGReader } from '@src/core'
  *
- * const reader = createMsgReader(buffer)
+ * const reader = createMSGReader(buffer)
  * const data = reader.parse()
  * console.log(data.kind)
  * ```
  */
-export function createMsgReader(
+export function createMSGReader(
 	buffer: ArrayBuffer | Uint8Array,
-	options?: MsgReaderOptions,
-): MsgReaderInterface {
-	return new MsgReader(buffer, options)
+	options?: MSGReaderOptions,
+): MSGReaderInterface {
+	return new MSGReader(buffer, options)
 }
 
-// === MsgBurner
+// === MSGBurner
 
 /**
  * Create a new CFB binary writer for reconstituting .msg files.
  *
- * @returns A working {@link MsgBurnerInterface}
+ * @returns A working {@link MSGBurnerInterface}
  *
  * @example
  * ```ts
- * import { createMsgBurner } from '@src/core'
+ * import { createMSGBurner } from '@src/core'
  *
- * const burner = createMsgBurner()
+ * const burner = createMSGBurner()
  * const binary = burner.burn(entries)
  * ```
  */
-export function createMsgBurner(): MsgBurnerInterface {
-	return new MsgBurner()
+export function createMSGBurner(): MSGBurnerInterface {
+	return new MSGBurner()
 }
 
 // === EmailParser

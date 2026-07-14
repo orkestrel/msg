@@ -3,14 +3,14 @@ import type {
 	Success,
 	Failure,
 	EmailFormat,
-	MimeHeader,
-	MimePart,
+	MIMEHeader,
+	MIMEPart,
 	EmailAttachment,
 	EmailMessage,
-	MsgEncoding,
-	MsgReaderInterface,
+	MSGEncoding,
+	MSGReaderInterface,
 } from './types.js'
-import { MsgError } from './errors.js'
+import { MSGError } from './errors.js'
 import {
 	MIME_EXTENSIONS,
 	MIME_MAX_DEPTH,
@@ -43,7 +43,7 @@ export function success<T>(value: T): Success<T> {
  *
  * @example
  * ```ts
- * const result = failure(new MsgError('MALFORMED', 'bad input'))
+ * const result = failure(new MSGError('MALFORMED', 'bad input'))
  * ```
  */
 export function failure<E>(error: E): Failure<E> {
@@ -80,7 +80,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-// === Msg Helpers
+// === MSG Helpers
 
 /**
  * Validate that a DataView starts with the CFB magic header.
@@ -88,7 +88,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
  * @param view - DataView to check
  * @returns True when the first 8 bytes match the CFB signature
  */
-export function isMsgFile(view: DataView): boolean {
+export function isMSGFile(view: DataView): boolean {
 	const header = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
 	if (view.byteLength < header.length) return false
 	for (let i = 0; i < header.length; i++) {
@@ -118,13 +118,13 @@ export function removeTrailingNull(text: string): string {
  * @param offset - Byte offset to start reading
  * @param charCount - Number of UTF-16 code units to read
  * @returns Decoded string
- * @throws {@link MsgError} with code `MALFORMED` when the requested range
+ * @throws {@link MSGError} with code `MALFORMED` when the requested range
  * exceeds the view's bounds
  */
-export function readUtf16String(view: DataView, offset: number, charCount: number): string {
+export function readUTF16String(view: DataView, offset: number, charCount: number): string {
 	const end = offset + charCount * 2
 	if (offset < 0 || charCount < 0 || end > view.byteLength) {
-		throw new MsgError('MALFORMED', 'UTF-16 string range exceeds view bounds', {
+		throw new MSGError('MALFORMED', 'UTF-16 string range exceeds view bounds', {
 			offset,
 			charCount,
 			byteLength: view.byteLength,
@@ -149,16 +149,16 @@ export function readUtf16String(view: DataView, offset: number, charCount: numbe
  *
  * @example
  * ```ts
- * readAnsiString(new Uint8Array([0x93, 0x41, 0x94])) // '“A”'
+ * readANSIString(new Uint8Array([0x93, 0x41, 0x94])) // '“A”'
  * ```
  */
-export function readAnsiString(data: Uint8Array, encoding?: MsgEncoding): string {
+export function readANSIString(data: Uint8Array, encoding?: MSGEncoding): string {
 	const resolved = encoding ?? 'windows-1252'
 	if (resolved === 'utf-16le') {
 		const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-		return readUtf16String(view, 0, Math.floor(data.length / 2))
+		return readUTF16String(view, 0, Math.floor(data.length / 2))
 	}
-	if (resolved === 'utf-8') return decodeUtf8(data)
+	if (resolved === 'utf-8') return decodeUTF8(data)
 	if (resolved === 'latin1') return decodeLatin1(data)
 	return decodeWindows1252(data)
 }
@@ -172,7 +172,7 @@ export function readAnsiString(data: Uint8Array, encoding?: MsgEncoding): string
  * @param high - High 32 bits of FILETIME
  * @returns UTC date string
  */
-export function fileTimeToUtcString(low: number, high: number): string {
+export function fileTimeToUTCString(low: number, high: number): string {
 	const fileTime = BigInt(low >>> 0) + (BigInt(high >>> 0) << 32n)
 	const unixMs = (fileTime - 116444736000000000n) / 10000n
 	return new Date(Number(unixMs)).toUTCString()
@@ -203,7 +203,7 @@ export function toHexLower(value: number, length: number): string {
  * @param offset - Byte offset to start reading
  * @returns UUID string in lowercase
  */
-export function msftUuidStringify(data: Uint8Array, offset: number): string {
+export function msftUUIDStringify(data: Uint8Array, offset: number): string {
 	const hex = '0123456789abcdef'
 	const b = (i: number) => hex[(data[offset + i] >> 4) & 15] + hex[data[offset + i] & 15]
 	return (
@@ -230,7 +230,7 @@ export function msftUuidStringify(data: Uint8Array, offset: number): string {
 	)
 }
 
-// === MsgBurner Helpers
+// === MSGBurner Helpers
 
 /**
  * Round a value up to the nearest multiple of a boundary.
@@ -263,7 +263,7 @@ export function sectorsNeeded(bytes: number, sectorSize: number): number {
  * @param b - Second name
  * @returns Negative, zero, or positive
  */
-export function compareCfbName(a: string, b: string): number {
+export function compareCFBName(a: string, b: string): number {
 	const diff = a.length - b.length
 	if (diff !== 0) return diff
 	const x = a.toUpperCase()
@@ -281,7 +281,7 @@ export function compareCfbName(a: string, b: string): number {
  *
  * @param text - Base64-encoded string
  * @returns Decoded byte array
- * @throws {@link MsgError} with code `MALFORMED` when the string contains
+ * @throws {@link MSGError} with code `MALFORMED` when the string contains
  * a character outside the Base64 alphabet
  *
  * @example
@@ -299,7 +299,7 @@ export function decodeBase64(text: string): Uint8Array {
 	for (const char of cleaned) {
 		const index = alphabet.indexOf(char)
 		if (index === -1) {
-			throw new MsgError('MALFORMED', `Invalid Base64 character: ${char}`, { char })
+			throw new MSGError('MALFORMED', `Invalid Base64 character: ${char}`, { char })
 		}
 		buffer = (buffer << 6) | index
 		bits += 6
@@ -321,10 +321,10 @@ export function decodeBase64(text: string): Uint8Array {
  *
  * @example
  * ```ts
- * encodeUtf8('A') // Uint8Array [65]
+ * encodeUTF8('A') // Uint8Array [65]
  * ```
  */
-export function encodeUtf8(text: string): Uint8Array {
+export function encodeUTF8(text: string): Uint8Array {
 	const bytes: number[] = []
 
 	for (let i = 0; i < text.length; i++) {
@@ -373,11 +373,11 @@ export function encodeUtf8(text: string): Uint8Array {
  *
  * @example
  * ```ts
- * decodeUtf8(new Uint8Array([65])) // 'A'
- * decodeUtf8(new Uint8Array([0xff])) // '�'
+ * decodeUTF8(new Uint8Array([65])) // 'A'
+ * decodeUTF8(new Uint8Array([0xff])) // '�'
  * ```
  */
-export function decodeUtf8(bytes: Uint8Array): string {
+export function decodeUTF8(bytes: Uint8Array): string {
 	let result = ''
 	let i = 0
 
@@ -500,7 +500,7 @@ export function decodeWindows1252(bytes: Uint8Array): string {
 
 /**
  * Resolve a free-form charset label (as seen in a MIME `charset` parameter)
- * to a supported {@link MsgEncoding}. Unknown or absent labels fall back
+ * to a supported {@link MSGEncoding}. Unknown or absent labels fall back
  * to `'utf-8'`.
  *
  * @param label - Charset label to resolve (case-insensitive)
@@ -512,7 +512,7 @@ export function decodeWindows1252(bytes: Uint8Array): string {
  * resolveEncoding(undefined) // 'utf-8'
  * ```
  */
-export function resolveEncoding(label: string | undefined): MsgEncoding {
+export function resolveEncoding(label: string | undefined): MSGEncoding {
 	const lower = label?.trim().toLowerCase()
 	if (lower === 'utf-8' || lower === 'utf8') return 'utf-8'
 	if (lower === 'utf-16le' || lower === 'utf-16') return 'utf-16le'
@@ -576,7 +576,7 @@ export function detectFormat(
  * @param text - Raw header text
  * @returns Map of parsed header objects
  */
-export function parseMimeHeaders(text: string): ReadonlyMap<string, MimeHeader> {
+export function parseMIMEHeaders(text: string): ReadonlyMap<string, MIMEHeader> {
 	const raw: Array<{ name: string; value: string }> = []
 
 	for (const line of text.split('\n')) {
@@ -596,7 +596,7 @@ export function parseMimeHeaders(text: string): ReadonlyMap<string, MimeHeader> 
 		})
 	}
 
-	const map = new Map<string, MimeHeader>()
+	const map = new Map<string, MIMEHeader>()
 	for (const { name, value } of raw) {
 		if (!map.has(name)) {
 			const segments = value.split(';')
@@ -620,19 +620,19 @@ export function parseMimeHeaders(text: string): ReadonlyMap<string, MimeHeader> 
 }
 
 /**
- * Parse a raw RFC 2822 / MIME text string into a MimePart tree.
+ * Parse a raw RFC 2822 / MIME text string into a MIMEPart tree.
  * Line endings are normalised to \n before processing. Recursion is
  * capped at {@link MIME_MAX_DEPTH} to guard against a hostile or
  * pathological multipart nesting cycle.
  *
  * @param raw - Raw MIME text
  * @param depth - Current recursion depth (internal; callers omit this)
- * @returns Parsed MimePart tree
- * @throws {@link MsgError} with code `CYCLE` when nesting exceeds {@link MIME_MAX_DEPTH}
+ * @returns Parsed MIMEPart tree
+ * @throws {@link MSGError} with code `CYCLE` when nesting exceeds {@link MIME_MAX_DEPTH}
  */
-export function parseMimePart(raw: string, depth = 0): MimePart {
+export function parseMIMEPart(raw: string, depth = 0): MIMEPart {
 	if (depth > MIME_MAX_DEPTH) {
-		throw new MsgError('CYCLE', 'MIME multipart nesting exceeds maximum depth', {
+		throw new MSGError('CYCLE', 'MIME multipart nesting exceeds maximum depth', {
 			depth,
 			max: MIME_MAX_DEPTH,
 		})
@@ -643,12 +643,12 @@ export function parseMimePart(raw: string, depth = 0): MimePart {
 	const headerText = split === -1 ? normalised : normalised.slice(0, split)
 	const body = split === -1 ? '' : normalised.slice(split + 2)
 
-	const headers = parseMimeHeaders(headerText)
+	const headers = parseMIMEHeaders(headerText)
 	const contentType = headers.get('content-type')
 	const primaryType = (contentType?.value ?? '').split(';')[0].trim().toLowerCase()
 	const boundary = contentType?.params.get('boundary') ?? ''
 
-	const parts: MimePart[] = []
+	const parts: MIMEPart[] = []
 	if (primaryType.startsWith('multipart/') && boundary !== '') {
 		const delimiter = '--' + boundary
 		const lines = body.split('\n')
@@ -658,12 +658,12 @@ export function parseMimePart(raw: string, depth = 0): MimePart {
 		for (const line of lines) {
 			const trimmed = line.trimEnd()
 			if (trimmed === delimiter + '--') {
-				if (inside && current.length > 0) parts.push(parseMimePart(current.join('\n'), depth + 1))
+				if (inside && current.length > 0) parts.push(parseMIMEPart(current.join('\n'), depth + 1))
 				inside = false
 				break
 			}
 			if (trimmed === delimiter) {
-				if (inside && current.length > 0) parts.push(parseMimePart(current.join('\n'), depth + 1))
+				if (inside && current.length > 0) parts.push(parseMIMEPart(current.join('\n'), depth + 1))
 				current = []
 				inside = true
 				continue
@@ -671,7 +671,7 @@ export function parseMimePart(raw: string, depth = 0): MimePart {
 			if (inside) current.push(line)
 		}
 
-		if (inside && current.length > 0) parts.push(parseMimePart(current.join('\n'), depth + 1))
+		if (inside && current.length > 0) parts.push(parseMIMEPart(current.join('\n'), depth + 1))
 	}
 
 	return { headers, body, parts }
@@ -683,10 +683,10 @@ export function parseMimePart(raw: string, depth = 0): MimePart {
  * @param body - Raw encoded string
  * @param encoding - Encoding type (e.g., 'base64', 'quoted-printable')
  * @returns Decoded byte array
- * @throws {@link MsgError} with code `MALFORMED` when `encoding` is `'base64'`
+ * @throws {@link MSGError} with code `MALFORMED` when `encoding` is `'base64'`
  * and `body` contains an invalid Base64 character
  */
-export function decodeMimeEncoding(body: string, encoding: string): Uint8Array {
+export function decodeMIMEEncoding(body: string, encoding: string): Uint8Array {
 	const enc = encoding.toLowerCase()
 
 	if (enc === 'base64') {
@@ -714,7 +714,7 @@ export function decodeMimeEncoding(body: string, encoding: string): Uint8Array {
 		return new Uint8Array(result)
 	}
 
-	return encodeUtf8(body)
+	return encodeUTF8(body)
 }
 
 /**
@@ -726,13 +726,13 @@ export function decodeMimeEncoding(body: string, encoding: string): Uint8Array {
  * @param charset - Character set label (e.g., 'utf-8')
  * @returns Decoded string
  */
-export function decodeMimeText(body: string, encoding: string, charset: string): string {
+export function decodeMIMEText(body: string, encoding: string, charset: string): string {
 	const enc = encoding.toLowerCase()
 	if (enc !== 'base64' && enc !== 'quoted-printable') {
 		return body // Return directly for 7bit/8bit text
 	}
-	const bytes = decodeMimeEncoding(body, encoding)
-	return readAnsiString(bytes, resolveEncoding(charset))
+	const bytes = decodeMIMEEncoding(body, encoding)
+	return readANSIString(bytes, resolveEncoding(charset))
 }
 
 /**
@@ -744,10 +744,10 @@ export function decodeMimeText(body: string, encoding: string, charset: string):
  *
  * @example
  * ```ts
- * decodeMimeWords('=?UTF-8?B?SGVsbG8=?=') // 'Hello'
+ * decodeMIMEWords('=?UTF-8?B?SGVsbG8=?=') // 'Hello'
  * ```
  */
-export function decodeMimeWords(text: string): string {
+export function decodeMIMEWords(text: string): string {
 	// RFC 2047 6.2: linear whitespace between two adjacent encoded-words is
 	// part of the encoding, not content — drop it before decoding.
 	const collapsed = text.replace(
@@ -761,9 +761,9 @@ export function decodeMimeWords(text: string): string {
 				const upper = enc.toUpperCase()
 				const bytes =
 					upper === 'B'
-						? decodeMimeEncoding(encoded, 'base64')
-						: decodeMimeEncoding(encoded.replace(/_/g, ' '), 'quoted-printable')
-				return readAnsiString(bytes, resolveEncoding(charset))
+						? decodeMIMEEncoding(encoded, 'base64')
+						: decodeMIMEEncoding(encoded.replace(/_/g, ' '), 'quoted-printable')
+				return readANSIString(bytes, resolveEncoding(charset))
 			} catch {
 				return encoded
 			}
@@ -787,7 +787,7 @@ export function formatEmailAddress(name: string | undefined, email: string | und
 }
 
 /**
- * Extract a single EmailMessage from a parsed MsgReader.
+ * Extract a single EmailMessage from a parsed MSGReader.
  * Reads field data and attachments from the reader interface.
  *
  * Each attachment is read independently: a corrupt attachment throws
@@ -795,13 +795,13 @@ export function formatEmailAddress(name: string | undefined, email: string | und
  * so the rest of the message still parses. This containment keeps one
  * damaged attachment stream from failing the entire message extraction.
  *
- * @param reader - A parsed MsgReaderInterface instance
+ * @param reader - A parsed MSGReaderInterface instance
  * @returns Structured EmailMessage
  */
-export function extractMessageFromMsg(reader: MsgReaderInterface): EmailMessage {
+export function extractMessageFromMSG(reader: MSGReaderInterface): EmailMessage {
 	const data = reader.parse()
 
-	const from = formatEmailAddress(data.senderName, data.senderSmtpAddress ?? data.senderEmail)
+	const from = formatEmailAddress(data.senderName, data.senderSMTPAddress ?? data.senderEmail)
 
 	const recipients = data.recipients ?? []
 	const to = recipients
@@ -826,7 +826,7 @@ export function extractMessageFromMsg(reader: MsgReaderInterface): EmailMessage 
 		const attachment = attachmentFields[i]
 		if (attachment === undefined) continue
 		if (attachment.attachmentHidden === true) continue
-		if (attachment.innerMsgContent === true) continue
+		if (attachment.innerMSGContent === true) continue
 		try {
 			const extracted = reader.attachment(i)
 			attachments.push({
@@ -848,20 +848,20 @@ export function extractMessageFromMsg(reader: MsgReaderInterface): EmailMessage 
 		subject: data.subject ?? '',
 		date,
 		text: data.body ?? '',
-		html: data.bodyHtml ?? '',
+		html: data.bodyHTML ?? '',
 		attachments,
 	}
 }
 
 /**
- * Extract a single EmailMessage from a top-level MimePart.
+ * Extract a single EmailMessage from a top-level MIMEPart.
  * Walks the full MIME tree to collect text, HTML, and attachments.
  *
- * @param part - Root MimePart from parseMimePart
+ * @param part - Root MIMEPart from parseMIMEPart
  * @returns Structured EmailMessage
  */
-export function extractMessage(part: MimePart): EmailMessage {
-	const headerValue = (name: string): string => decodeMimeWords(part.headers.get(name)?.value ?? '')
+export function extractMessage(part: MIMEPart): EmailMessage {
+	const headerValue = (name: string): string => decodeMIMEWords(part.headers.get(name)?.value ?? '')
 
 	const splitAddresses = (raw: string): readonly string[] =>
 		raw.length === 0
@@ -879,10 +879,10 @@ export function extractMessage(part: MimePart): EmailMessage {
 	}
 
 	const collectedText: string[] = []
-	const collectedHtml: string[] = []
+	const collectedHTML: string[] = []
 	const attachments: EmailAttachment[] = []
 
-	const walk = (p: MimePart) => {
+	const walk = (p: MIMEPart) => {
 		const contentType = p.headers.get('content-type')
 		const disposition = p.headers.get('content-disposition')
 		const transferEncoding = p.headers.get('content-transfer-encoding')
@@ -902,9 +902,9 @@ export function extractMessage(part: MimePart): EmailMessage {
 		if (isAttachmentPart) {
 			const name =
 				disposition?.params.get('filename') ?? contentType?.params.get('name') ?? 'attachment'
-			const bytes = decodeMimeEncoding(p.body, encoding)
+			const bytes = decodeMIMEEncoding(p.body, encoding)
 			attachments.push({
-				name: decodeMimeWords(name),
+				name: decodeMIMEWords(name),
 				mimeType: primaryType,
 				size: bytes.length,
 				bytes,
@@ -913,21 +913,21 @@ export function extractMessage(part: MimePart): EmailMessage {
 		}
 
 		if (primaryType === 'text/plain') {
-			collectedText.push(decodeMimeText(p.body, encoding, charset))
+			collectedText.push(decodeMIMEText(p.body, encoding, charset))
 			return
 		}
 
 		if (primaryType === 'text/html') {
-			collectedHtml.push(decodeMimeText(p.body, encoding, charset))
+			collectedHTML.push(decodeMIMEText(p.body, encoding, charset))
 			return
 		}
 
 		// Inline binary parts with a filename become attachments
 		const inlineName = contentType?.params.get('name') ?? disposition?.params.get('filename')
 		if (inlineName !== undefined) {
-			const bytes = decodeMimeEncoding(p.body, encoding)
+			const bytes = decodeMIMEEncoding(p.body, encoding)
 			attachments.push({
-				name: decodeMimeWords(inlineName),
+				name: decodeMIMEWords(inlineName),
 				mimeType: primaryType,
 				size: bytes.length,
 				bytes,
@@ -944,7 +944,7 @@ export function extractMessage(part: MimePart): EmailMessage {
 		subject: headerValue('subject'),
 		date,
 		text: collectedText.join(''),
-		html: collectedHtml.join(''),
+		html: collectedHTML.join(''),
 		attachments,
 	}
 }

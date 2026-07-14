@@ -1,12 +1,12 @@
 /**
- * MsgBurner
+ * MSGBurner
  *
  * Reconstitutes a valid CFB (Compound Binary File) from a flat list
- * of MsgBurnerEntry descriptors. Used to extract embedded .msg
+ * of MSGBurnerEntry descriptors. Used to extract embedded .msg
  * attachments as standalone binary files.
  */
 
-import type { MsgBurnerInterface, MsgBurnerEntry, MsgBurnerLiteEntry } from './types.js'
+import type { MSGBurnerInterface, MSGBurnerEntry, MSGBurnerLiteEntry } from './types.js'
 import {
 	MSG_FILE_HEADER,
 	MSG_TYPE_DIRECTORY,
@@ -24,14 +24,14 @@ import {
 	MSG_BURNER_ROOT_CLSID,
 	MSG_BURNER_NAME_MAX,
 } from './constants.js'
-import { sectorsNeeded, compareCfbName } from './helpers.js'
-import { MsgError } from './errors.js'
+import { sectorsNeeded, compareCFBName } from './helpers.js'
+import { MSGError } from './errors.js'
 
-// === MsgBurner
+// === MSGBurner
 
 /**
  * Reconstitutes a valid CFB (Compound Binary File) from a flat list of
- * {@link MsgBurnerEntry} descriptors — root storage at index 0, its
+ * {@link MSGBurnerEntry} descriptors — root storage at index 0, its
  * children reachable through `children` indices.
  *
  * @remarks
@@ -40,8 +40,8 @@ import { MsgError } from './errors.js'
  * into a single binary. Used to extract embedded `.msg` attachments as
  * standalone CFB files.
  */
-export class MsgBurner implements MsgBurnerInterface {
-	#liteEntries: MsgBurnerLiteEntry[] = []
+export class MSGBurner implements MSGBurnerInterface {
+	#liteEntries: MSGBurnerLiteEntry[] = []
 	#fat: number[] = []
 	#miniFat: number[] = []
 
@@ -50,10 +50,10 @@ export class MsgBurner implements MsgBurnerInterface {
 	 *
 	 * @param entries - Flat entry list starting with Root Entry at index 0
 	 * @returns Complete CFB binary as Uint8Array
-	 * @throws {@link MsgError} with code `BURN` when an entry name exceeds
+	 * @throws {@link MSGError} with code `BURN` when an entry name exceeds
 	 * the {@link MSG_BURNER_NAME_MAX} UTF-16 code unit limit the CFB directory entry format allows
 	 */
-	burn(entries: readonly MsgBurnerEntry[]): Uint8Array {
+	burn(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		this.#liteEntries = entries.map((entry) => ({
 			entry,
 			left: -1,
@@ -211,7 +211,7 @@ export class MsgBurner implements MsgBurnerInterface {
 		const sorted = children
 			.slice()
 			.sort((a, b) =>
-				compareCfbName(this.#liteEntries[a].entry.name, this.#liteEntries[b].entry.name),
+				compareCFBName(this.#liteEntries[a].entry.name, this.#liteEntries[b].entry.name),
 			)
 
 		const mid = Math.floor(sorted.length / 2)
@@ -325,7 +325,7 @@ export class MsgBurner implements MsgBurnerInterface {
 			// writing any name bytes.
 			const name = le.entry.name
 			if (name.length > MSG_BURNER_NAME_MAX) {
-				throw new MsgError(
+				throw new MSGError(
 					'BURN',
 					`directory entry name exceeds ${MSG_BURNER_NAME_MAX} characters`,
 					{ name },

@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
-	createMsgReader,
-	createMsgBurner,
+	createMSGReader,
+	createMSGBurner,
 	createEmailParser,
-	MsgReader,
-	MsgBurner,
+	MSGReader,
+	MSGBurner,
 	EmailParser,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
@@ -16,21 +16,21 @@ function readFixture(name: string): Uint8Array {
 	return new Uint8Array(readFileSync(`${fixturesDir}${name}`))
 }
 
-// createMsgReader — factory returns a working MsgReaderInterface. Full
-// parse behavior lives in MsgReader.test.ts; here we assert the factory
+// createMSGReader — factory returns a working MSGReaderInterface. Full
+// parse behavior lives in MSGReader.test.ts; here we assert the factory
 // hands back a usable, correctly-typed instance across both input forms.
 
-describe('createMsgReader', () => {
-	it('returns an instance of MsgReader', () => {
+describe('createMSGReader', () => {
+	it('returns an instance of MSGReader', () => {
 		const bytes = readFixture('test.msg')
-		const reader = createMsgReader(bytes)
+		const reader = createMSGReader(bytes)
 
-		expect(reader).toBeInstanceOf(MsgReader)
+		expect(reader).toBeInstanceOf(MSGReader)
 	})
 
 	it('parses a Uint8Array input', () => {
 		const bytes = readFixture('test.msg')
-		const reader = createMsgReader(bytes)
+		const reader = createMSGReader(bytes)
 
 		const data = reader.parse()
 		expect(data.kind).toBe('msg')
@@ -40,7 +40,7 @@ describe('createMsgReader', () => {
 		const bytes = readFixture('test.msg')
 		const buffer = new ArrayBuffer(bytes.byteLength)
 		new Uint8Array(buffer).set(bytes)
-		const reader = createMsgReader(buffer)
+		const reader = createMSGReader(buffer)
 
 		const data = reader.parse()
 		expect(data.kind).toBe('msg')
@@ -48,8 +48,8 @@ describe('createMsgReader', () => {
 
 	it('threads an { encoding } option through to non-Unicode string decoding', () => {
 		const bytes = readFixture('test.msg')
-		const defaultReader = createMsgReader(bytes)
-		const latin1Reader = createMsgReader(bytes, { encoding: 'latin1' })
+		const defaultReader = createMSGReader(bytes)
+		const latin1Reader = createMSGReader(bytes, { encoding: 'latin1' })
 
 		const defaultData = defaultReader.parse()
 		const latin1Data = latin1Reader.parse()
@@ -59,18 +59,18 @@ describe('createMsgReader', () => {
 	})
 })
 
-// createMsgBurner — factory returns a working MsgBurnerInterface capable of
+// createMSGBurner — factory returns a working MSGBurnerInterface capable of
 // burning a minimal entry list into a valid CFB binary.
 
-describe('createMsgBurner', () => {
-	it('returns an instance of MsgBurner', () => {
-		const burner = createMsgBurner()
+describe('createMSGBurner', () => {
+	it('returns an instance of MSGBurner', () => {
+		const burner = createMSGBurner()
 
-		expect(burner).toBeInstanceOf(MsgBurner)
+		expect(burner).toBeInstanceOf(MSGBurner)
 	})
 
 	it('burns a minimal entry list (root only) into a CFB binary', () => {
-		const burner = createMsgBurner()
+		const burner = createMSGBurner()
 
 		const binary = burner.burn([
 			{
@@ -86,7 +86,7 @@ describe('createMsgBurner', () => {
 	})
 
 	it('burns a minimal entry list with one document stream child', () => {
-		const burner = createMsgBurner()
+		const burner = createMSGBurner()
 		const content = new Uint8Array([1, 2, 3, 4])
 
 		const binary = burner.burn([

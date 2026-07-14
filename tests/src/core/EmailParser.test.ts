@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createEmailParser, detectFormat, isMsgError, isSuccess, isFailure } from '@src/core'
+import { createEmailParser, detectFormat, isMSGError, isSuccess, isFailure } from '@src/core'
 import { asciiBytes, buildEml, buildNestedMultipart, expectDefined } from '../../setup.js'
 
 // The EmailParser — parses raw .eml (RFC 2822/MIME) and .msg (CFB/OLE2) bytes
@@ -10,7 +10,7 @@ import { asciiBytes, buildEml, buildNestedMultipart, expectDefined } from '../..
 // detected from the file name extension, an explicit MIME type, or (when
 // neither resolves it) a CFB magic-header sniff; every failure — an
 // unrecognized format or a malformed/truncated file — surfaces as a
-// `Result` Failure wrapping a typed MsgError rather than throwing across
+// `Result` Failure wrapping a typed MSGError rather than throwing across
 // the parse() boundary (AGENTS §12). Driven with pure-ES fixtures (buildEml,
 // buildNestedMultipart) and the four binary .msg fixtures — no mocks.
 
@@ -68,7 +68,7 @@ describe('EmailParser — format detection', () => {
 
 		expect(isFailure(result)).toBe(true)
 		if (!isFailure(result)) return
-		expect(isMsgError(result.error)).toBe(true)
+		expect(isMSGError(result.error)).toBe(true)
 		expect(result.error.code).toBe('UNSUPPORTED')
 	})
 
@@ -298,7 +298,7 @@ describe('EmailParser — .msg fixtures', () => {
 		expect(result.value.format).toBe('msg')
 	})
 
-	it('returns a Failure with a structural MsgError code (never throws) for a truncated .msg', () => {
+	it('returns a Failure with a structural MSGError code (never throws) for a truncated .msg', () => {
 		const parser = createEmailParser()
 		const truncated = readFixture('test.msg').slice(0, 700)
 
@@ -313,7 +313,7 @@ describe('EmailParser — .msg fixtures', () => {
 		expect(thrown).toBe(false)
 		expect(isFailure(expectDefined(result))).toBe(true)
 		if (result === undefined || isSuccess(result)) return
-		expect(isMsgError(result.error)).toBe(true)
+		expect(isMSGError(result.error)).toBe(true)
 		expect(result.error.code).not.toBe('UNSUPPORTED')
 	})
 })
@@ -328,7 +328,7 @@ describe('EmailParser — MIME nesting depth guard', () => {
 
 		expect(isFailure(result)).toBe(true)
 		if (!isFailure(result)) return
-		expect(isMsgError(result.error)).toBe(true)
+		expect(isMSGError(result.error)).toBe(true)
 		expect(result.error.code).toBe('CYCLE')
 	})
 

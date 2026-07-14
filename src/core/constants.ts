@@ -1,4 +1,4 @@
-// === MsgReader
+// === MSGReader
 
 /**
  * CFB magic header bytes (0xD0CF11E0A1B11AE1).
@@ -87,7 +87,7 @@ export const MSG_PROP_NO_INDEX = -1
 
 /**
  * Maximum recursion depth accepted by the directory hierarchy builder
- * (`MsgReader#buildHierarchy`). Defense-in-depth against a pathological
+ * (`MSGReader#buildHierarchy`). Defense-in-depth against a pathological
  * or hostile directory tree — the sibling-chain and visited-set guards
  * already bound each level, this caps the recursion depth itself.
  */
@@ -191,7 +191,7 @@ export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = {
 	'0e07': 'messageFlags',
 	'0e1d': 'normalizedSubject',
 	'1000': 'body',
-	'1009': 'compressedRtf',
+	'1009': 'compressedRTF',
 	'1035': 'messageId',
 	// recipient specific
 	'3001': 'name',
@@ -214,10 +214,10 @@ export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = {
 	'3ff1': 'messageLocaleId',
 	'3ffa': 'lastModifierName',
 	'3ffd': 'messageCodepage',
-	'5d01': 'senderSmtpAddress',
-	'5d02': 'sentRepresentingSmtpAddress',
-	'5d0a': 'creatorSmtpAddress',
-	'5d0b': 'lastModifierSmtpAddress',
+	'5d01': 'senderSMTPAddress',
+	'5d02': 'sentRepresentingSMTPAddress',
+	'5d0a': 'creatorSMTPAddress',
+	'5d0b': 'lastModifierSMTPAddress',
 	'7ffe': 'attachmentHidden',
 	// contact specific
 	'3a05': 'generation',
@@ -246,7 +246,7 @@ export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = {
  * Full 8-char property tag to field name mapping (for compound tags).
  */
 export const MSG_FIELD_FULL_NAME_MAPPING: Readonly<Record<string, string>> = {
-	'1013001f': 'bodyHtml',
+	'1013001f': 'bodyHTML',
 	'10130102': 'html',
 }
 
@@ -290,7 +290,7 @@ export const MSG_MAPI_RECIPIENT_BCC = 3
 /**
  * PidLid property set GUID to LID-to-field-name mapping.
  * Maps well-known MAPI named property sets to their property
- * long IDs and corresponding field names on MsgFieldData.
+ * long IDs and corresponding field names on MSGFieldData.
  */
 export const MSG_PIDLID_MAPPING: Readonly<Record<string, Readonly<Record<number, string>>>> = {
 	// PSETID_Common
@@ -344,7 +344,7 @@ export const MSG_PIDLID_MAPPING: Readonly<Record<string, Readonly<Record<number,
 	},
 }
 
-// === MsgBurner
+// === MSGBurner
 
 /**
  * Standard CFB sector size in bytes (512).
@@ -459,7 +459,7 @@ export const MIME_EXTENSIONS: ReadonlyMap<string, string> = new Map([
 ])
 
 /**
- * Maximum multipart nesting depth accepted by `parseMimePart`.
+ * Maximum multipart nesting depth accepted by `parseMIMEPart`.
  * Guards against pathological or hostile MIME trees causing
  * unbounded recursion.
  */
@@ -470,7 +470,7 @@ export const MIME_MAX_DEPTH = 50
  * number of continuation bytes (1, 2, or 3). Enforces the WHATWG
  * requirement that a sequence encode the shortest possible form — an
  * overlong encoding (a code point below its sequence's minimum) is
- * rejected rather than accepted by `decodeUtf8`.
+ * rejected rather than accepted by `decodeUTF8`.
  */
 export const UTF8_SEQUENCE_MINIMUM: Readonly<Record<number, number>> = {
 	1: 0x80,

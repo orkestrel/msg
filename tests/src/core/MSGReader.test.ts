@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-	createMsgReader,
-	isMsgError,
-	isMsgFile,
+	createMSGReader,
+	isMSGError,
+	isMSGFile,
 	MSG_HEADER_BAT_COUNT_OFFSET,
 	MSG_HEADER_BAT_START_OFFSET,
 	MSG_HEADER_PROPERTY_START_OFFSET,
@@ -17,11 +17,11 @@ import {
 import { asciiBytes, patchBytes } from '../../setup.js'
 
 // The MSG (CFB/OLE2 compound binary) reader — parses Outlook .msg files into
-// MsgFieldData (subject, sender, body, recipients, attachments), reads
+// MSGFieldData (subject, sender, body, recipients, attachments), reads
 // attachment binary content by index, and can `burn` a parsed structure back
 // into a standalone CFB byte stream. Every parsing step treats the input as
 // untrusted: header fields, sector chains, and directory hierarchies are all
-// bounds- and cycle-guarded, surfacing a typed MsgError rather than a raw
+// bounds- and cycle-guarded, surfacing a typed MSGError rather than a raw
 // RangeError/TypeError (AGENTS §12).
 
 // === Fixture helpers (file-local: binary loading stays inside the test file)
@@ -47,7 +47,7 @@ function withByteOffset(bytes: Uint8Array, offset: number): Uint8Array {
 	return new Uint8Array(backing.buffer, offset, bytes.byteLength)
 }
 
-// Reads the CFB sector-size mark (byte 30) the same way MsgReader does, so
+// Reads the CFB sector-size mark (byte 30) the same way MSGReader does, so
 // test-side header patches land at the sector the reader itself will visit.
 function bigBlockSizeOf(bytes: Uint8Array): number {
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -57,11 +57,11 @@ function bigBlockSizeOf(bytes: Uint8Array): number {
 
 // === parse() — happy path across all four fixtures
 
-describe('MsgReader — parse() happy path', () => {
+describe('MSGReader — parse() happy path', () => {
 	it.each(['test.msg', 'attachmentFiles.msg', 'msgInMsg.msg', 'unicode1.msg'])(
 		'parses %s into a kind "msg" field data structure',
 		(name) => {
-			const reader = createMsgReader(toArrayBuffer(readFixture(name)))
+			const reader = createMSGReader(toArrayBuffer(readFixture(name)))
 			const data = reader.parse()
 
 			expect(data.kind).toBe('msg')
@@ -74,16 +74,16 @@ describe('MsgReader — parse() happy path', () => {
 	)
 
 	it('caches the parsed result across repeated calls', () => {
-		const reader = createMsgReader(toArrayBuffer(readFixture('test.msg')))
+		const reader = createMSGReader(toArrayBuffer(readFixture('test.msg')))
 		const first = reader.parse()
 		const second = reader.parse()
 		expect(first).toBe(second)
 	})
 })
 
-describe('MsgReader — unicode1.msg exercises UTF-16 field decoding', () => {
+describe('MSGReader — unicode1.msg exercises UTF-16 field decoding', () => {
 	it('decodes a non-empty subject containing at least one non-ASCII code unit', () => {
-		const reader = createMsgReader(toArrayBuffer(readFixture('unicode1.msg')))
+		const reader = createMSGReader(toArrayBuffer(readFixture('unicode1.msg')))
 		const data = reader.parse()
 
 		expect(data.subject).toBeDefined()
@@ -95,9 +95,9 @@ describe('MsgReader — unicode1.msg exercises UTF-16 field decoding', () => {
 	})
 })
 
-describe('MsgReader — attachmentFiles.msg exposes attachments', () => {
+describe('MSGReader — attachmentFiles.msg exposes attachments', () => {
 	it('lists attachments with a file name and readable binary content', () => {
-		const reader = createMsgReader(toArrayBuffer(readFixture('attachmentFiles.msg')))
+		const reader = createMSGReader(toArrayBuffer(readFixture('attachmentFiles.msg')))
 		const data = reader.parse()
 		const attachments = data.attachments ?? []
 
@@ -114,25 +114,25 @@ describe('MsgReader — attachmentFiles.msg exposes attachments', () => {
 	})
 })
 
-describe('MsgReader — msgInMsg.msg exercises an embedded .msg attachment', () => {
+describe('MSGReader — msgInMsg.msg exercises an embedded .msg attachment', () => {
 	it('marks the embedded entry as inner MSG content with parsed inner fields', () => {
-		const reader = createMsgReader(toArrayBuffer(readFixture('msgInMsg.msg')))
+		const reader = createMSGReader(toArrayBuffer(readFixture('msgInMsg.msg')))
 		const data = reader.parse()
 		const attachments = data.attachments ?? []
 
-		const inner = attachments.find((attachment) => attachment.innerMsgContent === true)
+		const inner = attachments.find((attachment) => attachment.innerMSGContent === true)
 		expect(inner).toBeDefined()
 		if (inner === undefined) throw new Error('expected an embedded MSG attachment')
 
-		expect(inner.innerMsgContentFields).toBeDefined()
-		expect(inner.innerMsgContentFields?.kind).toBe('msg')
+		expect(inner.innerMSGContentFields).toBeDefined()
+		expect(inner.innerMSGContentFields?.kind).toBe('msg')
 	})
 
 	it('reads the embedded .msg binary content as a valid CFB file via attachment()', () => {
-		const reader = createMsgReader(toArrayBuffer(readFixture('msgInMsg.msg')))
+		const reader = createMSGReader(toArrayBuffer(readFixture('msgInMsg.msg')))
 		const data = reader.parse()
 		const attachments = data.attachments ?? []
-		const innerIndex = attachments.findIndex((attachment) => attachment.innerMsgContent === true)
+		const innerIndex = attachments.findIndex((attachment) => attachment.innerMSGContent === true)
 		expect(innerIndex).toBeGreaterThanOrEqual(0)
 
 		const result = reader.attachment(innerIndex)
@@ -141,24 +141,24 @@ describe('MsgReader — msgInMsg.msg exercises an embedded .msg attachment', () 
 			result.content.byteOffset,
 			result.content.byteLength,
 		)
-		expect(isMsgFile(view)).toBe(true)
+		expect(isMSGFile(view)).toBe(true)
 
-		const innerReader = createMsgReader(toArrayBuffer(result.content))
+		const innerReader = createMSGReader(toArrayBuffer(result.content))
 		const reparsed = innerReader.parse()
 		expect(reparsed.kind).toBe('msg')
-		expect(reparsed.subject).toBe(attachments[innerIndex].innerMsgContentFields?.subject)
+		expect(reparsed.subject).toBe(attachments[innerIndex].innerMSGContentFields?.subject)
 	})
 })
 
 // === Constructor input forms
 
-describe('MsgReader — constructor accepts ArrayBuffer and Uint8Array forms identically', () => {
+describe('MSGReader — constructor accepts ArrayBuffer and Uint8Array forms identically', () => {
 	it('parses identically from an ArrayBuffer, a zero-offset Uint8Array, and a non-zero-offset Uint8Array view', () => {
 		const bytes = readFixture('test.msg')
 
-		const fromArrayBuffer = createMsgReader(toArrayBuffer(bytes)).parse()
-		const fromZeroOffsetView = createMsgReader(bytes.slice()).parse()
-		const fromNonZeroOffsetView = createMsgReader(withByteOffset(bytes, 37)).parse()
+		const fromArrayBuffer = createMSGReader(toArrayBuffer(bytes)).parse()
+		const fromZeroOffsetView = createMSGReader(bytes.slice()).parse()
+		const fromNonZeroOffsetView = createMSGReader(withByteOffset(bytes, 37)).parse()
 
 		expect(fromZeroOffsetView.kind).toBe('msg')
 		expect(fromNonZeroOffsetView.kind).toBe('msg')
@@ -174,9 +174,9 @@ describe('MsgReader — constructor accepts ArrayBuffer and Uint8Array forms ide
 
 // === attachment() error paths
 
-describe('MsgReader — attachment() range errors', () => {
-	it('throws an MsgError with code RANGE for a negative index', () => {
-		const reader = createMsgReader(toArrayBuffer(readFixture('test.msg')))
+describe('MSGReader — attachment() range errors', () => {
+	it('throws an MSGError with code RANGE for a negative index', () => {
+		const reader = createMSGReader(toArrayBuffer(readFixture('test.msg')))
 		reader.parse()
 
 		let thrown: unknown
@@ -185,12 +185,12 @@ describe('MsgReader — attachment() range errors', () => {
 		} catch (error) {
 			thrown = error
 		}
-		expect(isMsgError(thrown)).toBe(true)
-		expect(isMsgError(thrown) && thrown.code).toBe('RANGE')
+		expect(isMSGError(thrown)).toBe(true)
+		expect(isMSGError(thrown) && thrown.code).toBe('RANGE')
 	})
 
-	it('throws an MsgError with code RANGE for an index past the end', () => {
-		const reader = createMsgReader(toArrayBuffer(readFixture('test.msg')))
+	it('throws an MSGError with code RANGE for an index past the end', () => {
+		const reader = createMSGReader(toArrayBuffer(readFixture('test.msg')))
 		reader.parse()
 
 		let thrown: unknown
@@ -199,12 +199,12 @@ describe('MsgReader — attachment() range errors', () => {
 		} catch (error) {
 			thrown = error
 		}
-		expect(isMsgError(thrown)).toBe(true)
-		expect(isMsgError(thrown) && thrown.code).toBe('RANGE')
+		expect(isMSGError(thrown)).toBe(true)
+		expect(isMSGError(thrown) && thrown.code).toBe('RANGE')
 	})
 
 	it('reads valid indices without throwing', () => {
-		const reader = createMsgReader(toArrayBuffer(readFixture('attachmentFiles.msg')))
+		const reader = createMSGReader(toArrayBuffer(readFixture('attachmentFiles.msg')))
 		const data = reader.parse()
 		const attachments = data.attachments ?? []
 		expect(attachments.length).toBeGreaterThan(0)
@@ -215,10 +215,10 @@ describe('MsgReader — attachment() range errors', () => {
 
 // === Non-CFB / malformed input
 
-describe('MsgReader — non-CFB input', () => {
-	it('throws MsgError UNSUPPORTED for bytes lacking the CFB magic header', () => {
+describe('MSGReader — non-CFB input', () => {
+	it('throws MSGError UNSUPPORTED for bytes lacking the CFB magic header', () => {
 		const bytes = asciiBytes('hello world')
-		const reader = createMsgReader(toArrayBuffer(bytes))
+		const reader = createMSGReader(toArrayBuffer(bytes))
 
 		let thrown: unknown
 		try {
@@ -226,12 +226,12 @@ describe('MsgReader — non-CFB input', () => {
 		} catch (error) {
 			thrown = error
 		}
-		expect(isMsgError(thrown)).toBe(true)
-		expect(isMsgError(thrown) && thrown.code).toBe('UNSUPPORTED')
+		expect(isMSGError(thrown)).toBe(true)
+		expect(isMSGError(thrown) && thrown.code).toBe('UNSUPPORTED')
 	})
 
-	it('throws MsgError UNSUPPORTED for an empty buffer', () => {
-		const reader = createMsgReader(new ArrayBuffer(0))
+	it('throws MSGError UNSUPPORTED for an empty buffer', () => {
+		const reader = createMSGReader(new ArrayBuffer(0))
 
 		let thrown: unknown
 		try {
@@ -239,17 +239,17 @@ describe('MsgReader — non-CFB input', () => {
 		} catch (error) {
 			thrown = error
 		}
-		expect(isMsgError(thrown)).toBe(true)
-		expect(isMsgError(thrown) && thrown.code).toBe('UNSUPPORTED')
+		expect(isMSGError(thrown)).toBe(true)
+		expect(isMSGError(thrown) && thrown.code).toBe('UNSUPPORTED')
 	})
 })
 
 // === Truncated input
 
-describe('MsgReader — truncated input', () => {
-	it('throws a structural MsgError (not a raw RangeError) for a fixture truncated to 700 bytes', () => {
+describe('MSGReader — truncated input', () => {
+	it('throws a structural MSGError (not a raw RangeError) for a fixture truncated to 700 bytes', () => {
 		const bytes = readFixture('test.msg').slice(0, 700)
-		const reader = createMsgReader(toArrayBuffer(bytes))
+		const reader = createMSGReader(toArrayBuffer(bytes))
 
 		let thrown: unknown
 		try {
@@ -257,14 +257,14 @@ describe('MsgReader — truncated input', () => {
 		} catch (error) {
 			thrown = error
 		}
-		expect(isMsgError(thrown)).toBe(true)
+		expect(isMSGError(thrown)).toBe(true)
 	})
 })
 
 // === Corrupted header counts
 
-describe('MsgReader — corrupted FAT sector count', () => {
-	it('throws a structural MsgError instead of hanging or exhausting memory', () => {
+describe('MSGReader — corrupted FAT sector count', () => {
+	it('throws a structural MSGError instead of hanging or exhausting memory', () => {
 		const bytes = readFixture('test.msg')
 		const huge = 0x7fffffff
 		const patched = patchBytes(bytes, [
@@ -273,7 +273,7 @@ describe('MsgReader — corrupted FAT sector count', () => {
 			[MSG_HEADER_BAT_COUNT_OFFSET + 2, (huge >>> 16) & 0xff],
 			[MSG_HEADER_BAT_COUNT_OFFSET + 3, (huge >>> 24) & 0xff],
 		])
-		const reader = createMsgReader(toArrayBuffer(patched))
+		const reader = createMSGReader(toArrayBuffer(patched))
 
 		let thrown: unknown
 		try {
@@ -281,14 +281,14 @@ describe('MsgReader — corrupted FAT sector count', () => {
 		} catch (error) {
 			thrown = error
 		}
-		expect(isMsgError(thrown)).toBe(true)
+		expect(isMSGError(thrown)).toBe(true)
 	})
 })
 
 // === FAT cycle
 
-describe('MsgReader — a FAT sector chain that points back at itself', () => {
-	it('terminates promptly with an MsgError instead of looping forever', () => {
+describe('MSGReader — a FAT sector chain that points back at itself', () => {
+	it('terminates promptly with an MSGError instead of looping forever', () => {
 		const bytes = readFixture('test.msg')
 		const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 
@@ -312,7 +312,7 @@ describe('MsgReader — a FAT sector chain that points back at itself', () => {
 			[entryOffset + 2, (propertyStart >>> 16) & 0xff],
 			[entryOffset + 3, (propertyStart >>> 24) & 0xff],
 		])
-		const reader = createMsgReader(toArrayBuffer(patched))
+		const reader = createMSGReader(toArrayBuffer(patched))
 
 		let thrown: unknown
 		try {
@@ -320,8 +320,8 @@ describe('MsgReader — a FAT sector chain that points back at itself', () => {
 		} catch (error) {
 			thrown = error
 		}
-		expect(isMsgError(thrown)).toBe(true)
-		expect(isMsgError(thrown) && (thrown.code === 'CYCLE' || thrown.code === 'MALFORMED')).toBe(
+		expect(isMSGError(thrown)).toBe(true)
+		expect(isMSGError(thrown) && (thrown.code === 'CYCLE' || thrown.code === 'MALFORMED')).toBe(
 			true,
 		)
 	})
@@ -329,7 +329,7 @@ describe('MsgReader — a FAT sector chain that points back at itself', () => {
 
 // === Adversarial directory entry name size
 
-describe('MsgReader — a directory entry name-size field set to an adversarial value', () => {
+describe('MSGReader — a directory entry name-size field set to an adversarial value', () => {
 	it('clamps the name read instead of driving a raw RangeError past the entry', () => {
 		const bytes = readFixture('test.msg')
 		const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -340,13 +340,13 @@ describe('MsgReader — a directory entry name-size field set to an adversarial 
 		const nameSizeOffset = entryOffset + MSG_PROP_NAME_SIZE_OFFSET
 
 		// 0xFFFE claims a ~65KB name — far beyond the 64-byte CFB name field —
-		// which, unclamped, would drive readUtf16String's raw getUint16 reads
+		// which, unclamped, would drive readUTF16String's raw getUint16 reads
 		// past the view's bounds and throw a raw RangeError near EOF.
 		const patched = patchBytes(bytes, [
 			[nameSizeOffset, 0xfe],
 			[nameSizeOffset + 1, 0xff],
 		])
-		const reader = createMsgReader(toArrayBuffer(patched))
+		const reader = createMSGReader(toArrayBuffer(patched))
 
 		let thrown: unknown
 		try {
@@ -356,25 +356,25 @@ describe('MsgReader — a directory entry name-size field set to an adversarial 
 		}
 		// Clamped to the entry's own 31-unit capacity, the read stays in
 		// bounds — either parse succeeds outright, or any failure surfaces
-		// as a typed MsgError, never a raw RangeError.
-		expect(thrown === undefined || isMsgError(thrown)).toBe(true)
+		// as a typed MSGError, never a raw RangeError.
+		expect(thrown === undefined || isMSGError(thrown)).toBe(true)
 	})
 })
 
 // === burn() round-trip
 
-describe('MsgReader — burn() round-trip', () => {
+describe('MSGReader — burn() round-trip', () => {
 	it.each(['test.msg', 'attachmentFiles.msg', 'msgInMsg.msg', 'unicode1.msg'])(
 		'rebuilds %s into an openable CFB file with the same subject, body, and attachment count',
 		(name) => {
-			const reader = createMsgReader(toArrayBuffer(readFixture(name)))
+			const reader = createMSGReader(toArrayBuffer(readFixture(name)))
 			const original = reader.parse()
 			const burned = reader.burn()
 
 			const view = new DataView(burned.buffer, burned.byteOffset, burned.byteLength)
-			expect(isMsgFile(view)).toBe(true)
+			expect(isMSGFile(view)).toBe(true)
 
-			const rebuiltReader = createMsgReader(toArrayBuffer(burned))
+			const rebuiltReader = createMSGReader(toArrayBuffer(burned))
 			const reparsed = rebuiltReader.parse()
 
 			expect(reparsed.kind).toBe('msg')
@@ -387,16 +387,16 @@ describe('MsgReader — burn() round-trip', () => {
 
 // === encoding option
 
-describe('MsgReader — encoding option', () => {
+describe('MSGReader — encoding option', () => {
 	it('parses successfully with { encoding: "latin1" }', () => {
-		const reader = createMsgReader(toArrayBuffer(readFixture('test.msg')), { encoding: 'latin1' })
+		const reader = createMSGReader(toArrayBuffer(readFixture('test.msg')), { encoding: 'latin1' })
 		const data = reader.parse()
 		expect(data.kind).toBe('msg')
 	})
 
 	it('produces the same result as the default (windows-1252) encoding for this fixture', () => {
-		const defaultReader = createMsgReader(toArrayBuffer(readFixture('test.msg')))
-		const latin1Reader = createMsgReader(toArrayBuffer(readFixture('test.msg')), {
+		const defaultReader = createMSGReader(toArrayBuffer(readFixture('test.msg')))
+		const latin1Reader = createMSGReader(toArrayBuffer(readFixture('test.msg')), {
 			encoding: 'latin1',
 		})
 

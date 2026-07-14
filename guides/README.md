@@ -6,7 +6,7 @@ A dual-axis index into this repository's guides — by concept, and by directory
 
 | Concept | Spec                       | Source                    | Tests                                 |
 | ------- | -------------------------- | ------------------------- | ------------------------------------- |
-| Msg     | [`src/msg.md`](src/msg.md) | [`src/core`](../src/core) | [`tests/src/core`](../tests/src/core) |
+| MSG     | [`src/msg.md`](src/msg.md) | [`src/core`](../src/core) | [`tests/src/core`](../tests/src/core) |
 
 ## By directory
 
