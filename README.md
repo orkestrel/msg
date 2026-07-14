@@ -1,21 +1,26 @@
-# @orkestrel/sse
+# @orkestrel/msg
 
-A typed Server-Sent Events parser — incremental, spec-compliant parsing of
-event-stream chunks into typed events with `data`, `event`, `id`, and `retry`
-fields. Feed it string chunks as they arrive; a blank line dispatches the
-accumulated event, and a partial line or in-progress event split across
-chunk boundaries is buffered until the rest arrives. The `id` / `retry`
-fields also persist as sticky connection state — surfaced via the `id` /
-`retry` getters for reconnection — and an optional `limit` bounds total
-buffered characters. A pure functional primitive — no Emitter, no events, no
-server / HTTP / agent coupling; it never throws on malformed input, only a
-typed `SSEError('OVERFLOW')` when a configured `limit` is exceeded. Part of
-the `@orkestrel` line.
+A zero-dependency Outlook `.msg` (CFB/OLE2) and `.eml` (RFC 2822/MIME) email
+parser — extracts headers, bodies, recipients, and attachments into typed
+structures. Feed it raw file bytes plus an optional file name or MIME hint; the
+format is detected automatically and the file is parsed into a structured
+`EmailChain` — sender, recipients, subject, date, text/HTML bodies, and
+decoded attachments. `.msg` files are read via a from-scratch CFB (Compound
+File Binary / OLE2) parser that walks the directory tree and extracts MAPI
+properties directly; `.eml` files are read via a from-scratch RFC 2822/MIME
+parser that walks the header block and the (possibly nested) MIME part tree.
+A lower-level `MsgReader` / `MsgBurner` pair is also exposed for readers that
+need direct CFB access — `MsgReader` parses a `.msg` binary into its raw
+directory/property structure, and `MsgBurner` reconstitutes that structure
+back into a valid CFB byte stream (a round-trip "burn"), useful for rebuilding
+or re-serializing a `.msg` file after editing its parsed fields. It never
+throws on malformed input, only a typed `MsgError` returned inside a
+`Result`. Part of the `@orkestrel` line.
 
 ## Install
 
 ```sh
-npm install @orkestrel/sse
+npm install @orkestrel/msg
 ```
 
 ## Requirements
@@ -27,41 +32,54 @@ npm install @orkestrel/sse
 ## Usage
 
 ```ts
-import { createSSEParser, isSSEError } from '@orkestrel/sse'
+import { createEmailParser, isSuccess } from '@orkestrel/msg'
 
-const parser = createSSEParser({ limit: 1_000_000 })
-parser.parse('data: a\ndata: b\n\n') // [{ data: 'a\nb' }] - the two data lines joined
-parser.parse('event: ping\ndata: 1') // [] - buffered until its blank line
-parser.parse('\n\n') // [{ data: '1', event: 'ping' }]
+const parser = createEmailParser()
+const result = parser.parse({ bytes, name: 'message.msg' }) // bytes: Uint8Array
 
-parser.id // '1' - sticky last-event-id, survives dispatch
-parser.retry // undefined - sticky reconnection time, until a retry: field arrives
+if (isSuccess(result)) {
+	const chain = result.value
+	console.log(chain.format) // 'msg' or 'eml'
 
-try {
-	parser.parse('x'.repeat(2_000_000))
-} catch (error) {
-	if (isSSEError(error) && error.code === 'OVERFLOW') parser.reset()
+	const message = chain.messages[0]
+	console.log(message.from, message.to, message.subject)
+	console.log(message.text) // plain-text body (includes quoted reply chain)
+	console.log(message.html) // HTML body (includes quoted reply chain)
+
+	for (const attachment of message.attachments) {
+		console.log(attachment.name, attachment.mimeType, attachment.size)
+	}
+} else {
+	console.error(result.error.code, result.error.message) // 'UNSUPPORTED' | 'MALFORMED' | ...
 }
-
-parser.flush() // force out a trailing unterminated event at end-of-stream
-parser.reset() // full reset - drops buffered state and sticky id/retry
 ```
 
-Pair it with a `TextDecoder({ stream: true })` when reading a byte stream so
-multi-byte UTF-8 characters split across reads are handled — the decoder
-handles partial characters, this parser handles partial lines and events.
+`parse` is synchronous and returns a `Result<EmailChain, MsgError>` — never
+throws. Format is inferred from the `name` / `mime` hints when supplied, or
+detected from the byte content itself (CFB header for `.msg`, RFC 2822 header
+block for `.eml`) when they are absent.
 
-The optional `limit` option caps total buffered characters; when set, a
-`parse(chunk)` call that would exceed it throws a typed `SSEError('OVERFLOW')`
-instead of growing unbounded, leaving parser state unchanged. Without
-`flush()`, a stream that ends without a final blank line has its last event
-discarded per spec — call `flush()` at end-of-stream to force it out.
+For direct access to the underlying `.msg` CFB structure — and to rebuild a
+`.msg` binary after editing its parsed fields — use `createMsgReader` and
+`createMsgBurner`:
+
+```ts
+import { createMsgReader, createMsgBurner } from '@orkestrel/msg'
+
+const reader = createMsgReader(buffer) // ArrayBuffer or Uint8Array
+const data = reader.parse() // raw directory/property structure
+const rebuilt = reader.burn() // round-trip back into a CFB byte stream
+
+const burner = createMsgBurner()
+const binary = burner.burn(entries) // build a CFB byte stream from entry descriptors
+```
 
 ## Guide
 
-For the full surface — the `SSEParser` class, its `SSEEvent` shape, the wire
-format it implements, and the `createSSEParser` factory — see
-[`guides/src/sse.md`](guides/src/sse.md).
+For the full surface — the `EmailParser`, `MsgReader`, and `MsgBurner`
+classes, their supporting types (`EmailChain`, `EmailMessage`,
+`EmailAttachment`, `MsgDirectoryEntry`, and friends), and the CFB/MIME formats
+they implement — see [`guides/src/msg.md`](guides/src/msg.md).
 
 ## Package
 

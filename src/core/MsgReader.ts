@@ -16,7 +16,8 @@ import type {
 	MsgMutableFieldData,
 	MsgNameIdEntry,
 	MsgBurnerEntry,
-} from '../types.js'
+} from './types.js'
+import { MsgError } from './errors.js'
 import {
 	MSG_END_OF_CHAIN,
 	MSG_UNUSED_BLOCK,
@@ -57,7 +58,9 @@ import {
 	MSG_MAPI_RECIPIENT_TO,
 	MSG_MAPI_RECIPIENT_CC,
 	MSG_MAPI_RECIPIENT_BCC,
-} from '../constants.js'
+	MSG_BURNER_NAME_MAX,
+	MSG_MAX_HIERARCHY_DEPTH,
+} from './constants.js'
 import {
 	isMsgFile,
 	removeTrailingNull,
@@ -66,12 +69,22 @@ import {
 	fileTimeToUtcString,
 	toHexLower,
 	msftUuidStringify,
-} from '../helpers.js'
+} from './helpers.js'
 import { MsgBurner } from './MsgBurner.js'
 // === MsgReader
 
+/**
+ * Parses Microsoft Outlook .msg files (CFB/OLE2 compound binary format).
+ * Every parsing step treats the input as untrusted: sector and property
+ * chains are cycle-guarded and length-capped, every raw byte range is
+ * bounds-checked before a view is constructed over it, and every failure
+ * surfaces as a typed {@link MsgError} rather than a raw `RangeError` or
+ * `TypeError`.
+ */
 export class MsgReader implements MsgReaderInterface {
 	readonly #view: DataView
+	readonly #byteLength: number
+	readonly #totalSectors: number
 	readonly #options: MsgReaderOptions
 	#bigBlockSize = 0
 	#bigBlockLength = 0
@@ -90,19 +103,33 @@ export class MsgReader implements MsgReaderInterface {
 	#privatePidToKeyed: Record<number, MsgNameIdEntry> = {}
 	#innerMsgBurners: Record<number, () => Uint8Array> = {}
 
-	constructor(buffer: ArrayBuffer, options?: MsgReaderOptions) {
-		this.#view = new DataView(buffer)
+	/**
+	 * Create a reader over a raw MSG file buffer.
+	 *
+	 * @param input - Raw MSG file bytes, as an `ArrayBuffer` or a `Uint8Array` view
+	 * @param options - Reader configuration
+	 */
+	constructor(input: ArrayBuffer | Uint8Array, options?: MsgReaderOptions) {
+		if (input instanceof Uint8Array) {
+			this.#view = new DataView(input.buffer, input.byteOffset, input.byteLength)
+			this.#byteLength = input.byteLength
+		} else {
+			this.#view = new DataView(input)
+			this.#byteLength = input.byteLength
+		}
 		this.#options = options ?? {}
+		this.#totalSectors = Math.ceil(this.#byteLength / MSG_S_BIG_BLOCK_SIZE)
 	}
 
+	/**
+	 * Parse the MSG file and return extracted field data.
+	 *
+	 * @returns Root message field data with nested attachments and recipients
+	 * @throws {@link MsgError} with code `UNSUPPORTED`, `MALFORMED`, `CYCLE`,
+	 * or `RANGE` when the compound file cannot be parsed
+	 */
 	parse(): MsgFieldData {
 		if (this.#fields !== undefined) return this.#fields
-
-		if (!isMsgFile(this.#view)) {
-			const result: MsgFieldData = { dataType: null, error: 'Unsupported file type' }
-			this.#fields = result
-			return result
-		}
 
 		this.#parseHeader()
 		this.#bat = this.#readBat()
@@ -120,11 +147,18 @@ export class MsgReader implements MsgReaderInterface {
 		return fields
 	}
 
+	/**
+	 * Read attachment binary content by index.
+	 *
+	 * @param index - Zero-based index into the parsed attachment list
+	 * @returns File name and raw binary content
+	 * @throws {@link MsgError} with code `RANGE` when the index is out of bounds
+	 */
 	attachment(index: number): MsgAttachment {
 		const parsed = this.parse()
 		const attachments = parsed.attachments
 		if (attachments === undefined || index < 0 || index >= attachments.length) {
-			throw new Error(`Attachment index ${index} out of range`)
+			throw new MsgError('RANGE', `Attachment index ${index} out of range`, { index })
 		}
 
 		const attach = attachments[index]
@@ -135,8 +169,12 @@ export class MsgReader implements MsgReaderInterface {
 			return { fileName: name + '.msg', content }
 		}
 
-		if (typeof attach.dataId !== 'number') {
-			throw new Error('Attachment has no data reference')
+		if (
+			typeof attach.dataId !== 'number' ||
+			attach.dataId < 0 ||
+			attach.dataId >= this.#properties.length
+		) {
+			throw new MsgError('RANGE', 'Attachment has no valid data reference', { index })
 		}
 
 		const entry = this.#properties[attach.dataId]
@@ -153,15 +191,24 @@ export class MsgReader implements MsgReaderInterface {
 		return { fileName, content }
 	}
 
+	/**
+	 * Rebuild the parsed MSG as a standalone CFB/.msg binary.
+	 *
+	 * @returns Complete CFB byte stream
+	 * @throws {@link MsgError} with code `BURN` when the parsed structure
+	 * cannot be reconstituted
+	 */
 	burn(): Uint8Array {
 		const parsed = this.parse()
-		if (parsed.dataType !== 'msg' || parsed.error !== undefined) {
-			throw new Error(parsed.error ?? 'Unable to burn unsupported MSG file')
+		if (parsed.kind !== 'msg') {
+			throw new MsgError('BURN', 'Unable to burn a non-message field data structure', {
+				kind: parsed.kind,
+			})
 		}
 
 		const root = this.#properties[0]
 		if (root === undefined) {
-			throw new Error('Unable to burn MSG file without a root entry')
+			throw new MsgError('BURN', 'Unable to burn MSG file without a root entry')
 		}
 
 		return this.#burnFolder(root, false, false)
@@ -170,6 +217,15 @@ export class MsgReader implements MsgReaderInterface {
 	// === Header Parsing
 
 	#parseHeader(): void {
+		if (!isMsgFile(this.#view)) {
+			throw new MsgError('UNSUPPORTED', 'Input is not a recognized CFB/MSG file')
+		}
+		if (this.#byteLength < MSG_S_BIG_BLOCK_SIZE) {
+			throw new MsgError('MALFORMED', 'File is smaller than the minimum CFB header size', {
+				byteLength: this.#byteLength,
+			})
+		}
+
 		const v = this.#view
 		const sectorMark = v.getUint8(30)
 		this.#bigBlockSize =
@@ -177,12 +233,68 @@ export class MsgReader implements MsgReaderInterface {
 		this.#bigBlockLength = this.#bigBlockSize / 4
 		this.#xBlockLength = this.#bigBlockLength - 1
 
-		this.#batCount = v.getInt32(MSG_HEADER_BAT_COUNT_OFFSET, true)
-		this.#propertyStart = v.getInt32(MSG_HEADER_PROPERTY_START_OFFSET, true)
-		this.#sbatStart = v.getInt32(MSG_HEADER_SBAT_START_OFFSET, true)
-		this.#sbatCount = v.getInt32(MSG_HEADER_SBAT_COUNT_OFFSET, true)
-		this.#xbatStart = v.getInt32(MSG_HEADER_XBAT_START_OFFSET, true)
-		this.#xbatCount = v.getInt32(MSG_HEADER_XBAT_COUNT_OFFSET, true)
+		const batCount = v.getInt32(MSG_HEADER_BAT_COUNT_OFFSET, true)
+		const propertyStart = v.getInt32(MSG_HEADER_PROPERTY_START_OFFSET, true)
+		const sbatStart = v.getInt32(MSG_HEADER_SBAT_START_OFFSET, true)
+		const sbatCount = v.getInt32(MSG_HEADER_SBAT_COUNT_OFFSET, true)
+		const xbatStart = v.getInt32(MSG_HEADER_XBAT_START_OFFSET, true)
+		const xbatCount = v.getInt32(MSG_HEADER_XBAT_COUNT_OFFSET, true)
+
+		this.#validateHeaderField('batCount', batCount)
+		this.#validateHeaderField('sbatCount', sbatCount)
+		this.#validateHeaderField('xbatCount', xbatCount)
+		this.#validateHeaderField('propertyStart', propertyStart)
+
+		this.#batCount = batCount
+		this.#propertyStart = propertyStart
+		this.#sbatStart = sbatStart
+		this.#sbatCount = sbatCount
+		this.#xbatStart = xbatStart
+		this.#xbatCount = xbatCount
+	}
+
+	// two words: validates a single header count/sector field against totalSectors
+	#validateHeaderField(name: string, value: number): void {
+		if (value < 0 || value > this.#totalSectors) {
+			throw new MsgError('MALFORMED', `CFB header field '${name}' is out of range`, {
+				field: name,
+				value,
+			})
+		}
+	}
+
+	// bounds guard shared by every raw byte-range read over the file view
+	#assertBounds(start: number, length: number): void {
+		if (start < 0 || length < 0 || start + length > this.#byteLength) {
+			throw new MsgError('MALFORMED', 'Computed byte range exceeds file bounds', {
+				start,
+				length,
+				byteLength: this.#byteLength,
+			})
+		}
+	}
+
+	// cycle guard shared by every sector-chain walk; each domain supplies its
+	// own capacity (big-sector chains cap at totalSectors, the small-block
+	// chain caps at the mini-FAT's own capacity) so a mini-stream chain -
+	// which routinely has far more links than the file has big sectors - is
+	// never conflated with a big-sector chain's cap
+	#trackSector(
+		visited: Set<number>,
+		sector: number,
+		label: string,
+		limit: number,
+		capacityLabel: string,
+	): void {
+		if (visited.has(sector)) {
+			throw new MsgError('CYCLE', `${label} chain revisits sector ${sector}`, { sector })
+		}
+		if (visited.size >= limit) {
+			throw new MsgError('CYCLE', `${label} chain exceeds ${capacityLabel}`, {
+				limit,
+			})
+		}
+		visited.add(sector)
 	}
 
 	// === FAT (Block Allocation Table)
@@ -204,11 +316,18 @@ export class MsgReader implements MsgReaderInterface {
 	}
 
 	#blockOffset(sector: number): number {
+		if (sector < 0 || sector >= this.#totalSectors) {
+			throw new MsgError('MALFORMED', `Sector index out of range: ${sector}`, {
+				sector,
+				totalSectors: this.#totalSectors,
+			})
+		}
 		return (sector + 1) * this.#bigBlockSize
 	}
 
 	#blockValueAt(sector: number, index: number): number {
 		const offset = this.#blockOffset(sector) + 4 * index
+		this.#assertBounds(offset, 4)
 		return this.#view.getInt32(offset, true)
 	}
 
@@ -232,12 +351,14 @@ export class MsgReader implements MsgReaderInterface {
 
 	#readSbat(): number[] {
 		const result: number[] = []
+		const visited = new Set<number>()
 		let startIndex = this.#sbatStart
 		for (
 			let i = 0;
 			i < this.#sbatCount && startIndex !== 0 && startIndex !== MSG_END_OF_CHAIN;
 			i++
 		) {
+			this.#trackSector(visited, startIndex, 'SBAT', this.#totalSectors, 'total sector count')
 			result.push(startIndex)
 			startIndex = this.#nextBlock(startIndex)
 		}
@@ -250,9 +371,12 @@ export class MsgReader implements MsgReaderInterface {
 		const headerBatCount = this.#batCountInHeader()
 		let remaining = this.#batCount - headerBatCount
 		let nextSector = this.#xbatStart
+		const visited = new Set<number>()
 
 		for (let i = 0; i < this.#xbatCount; i++) {
+			this.#trackSector(visited, nextSector, 'XBAT', this.#totalSectors, 'total sector count')
 			const blockOffset = this.#blockOffset(nextSector)
+			this.#assertBounds(blockOffset, this.#bigBlockSize)
 			const toProcess = Math.min(remaining, this.#xBlockLength)
 
 			for (let j = 0; j < toProcess; j++) {
@@ -272,7 +396,10 @@ export class MsgReader implements MsgReaderInterface {
 	#readEntryName(offset: number): string {
 		const nameBytes = this.#view.getUint16(offset + MSG_PROP_NAME_SIZE_OFFSET, true)
 		if (nameBytes < 2) return ''
-		const charCount = nameBytes / 2 - 1
+		// The fixed 64-byte CFB name field holds at most 32 UTF-16 units
+		// including the NUL terminator, so a hostile name-size field is
+		// clamped to that field's own capacity before it is ever read.
+		const charCount = Math.min(nameBytes / 2 - 1, MSG_BURNER_NAME_MAX)
 		return removeTrailingNull(readUtf16String(this.#view, offset, charCount))
 	}
 
@@ -291,14 +418,22 @@ export class MsgReader implements MsgReaderInterface {
 
 	#readProperties(propertyStart: number): MsgDirectoryEntry[] {
 		const props: MsgDirectoryEntry[] = []
+		const visited = new Set<number>()
 		let currentSector = propertyStart
 
 		while (currentSector !== MSG_END_OF_CHAIN) {
+			this.#trackSector(
+				visited,
+				currentSector,
+				'Property',
+				this.#totalSectors,
+				'total sector count',
+			)
 			const entryCount = this.#bigBlockSize / MSG_PROPERTY_SIZE
 			let offset = this.#blockOffset(currentSector)
 
 			for (let i = 0; i < entryCount; i++) {
-				if (offset + MSG_PROP_TYPE_OFFSET >= this.#view.byteLength) break
+				if (offset + MSG_PROPERTY_SIZE > this.#byteLength) break
 				const entryType = this.#view.getUint8(offset + MSG_PROP_TYPE_OFFSET)
 
 				if (
@@ -324,15 +459,40 @@ export class MsgReader implements MsgReaderInterface {
 		}
 
 		if (props.length > 0) {
-			this.#buildHierarchy(props, props[0])
+			this.#buildHierarchy(props, 0, new Set<number>(), 0)
 		}
 		return props
 	}
 
-	#buildHierarchy(props: MsgDirectoryEntry[], node: MsgDirectoryEntry): void {
+	#buildHierarchy(
+		props: MsgDirectoryEntry[],
+		nodeIndex: number,
+		visited: Set<number>,
+		depth: number,
+	): void {
+		const node = props[nodeIndex]
 		if (node === undefined || node.childProperty === MSG_PROP_NO_INDEX) return
+
+		if (depth > MSG_MAX_HIERARCHY_DEPTH) {
+			throw new MsgError('CYCLE', 'Directory hierarchy nesting exceeds maximum depth', {
+				depth,
+				max: MSG_MAX_HIERARCHY_DEPTH,
+			})
+		}
+		if (visited.has(nodeIndex)) {
+			throw new MsgError('CYCLE', `Directory hierarchy revisits property index ${nodeIndex}`, {
+				index: nodeIndex,
+			})
+		}
+		if (visited.size >= props.length) {
+			throw new MsgError('CYCLE', 'Directory hierarchy traversal exceeds total property count', {
+				limit: props.length,
+			})
+		}
+		visited.add(nodeIndex)
 		node.children = []
 
+		const siblingVisited = new Set<number>([node.childProperty])
 		const stack: Array<{ mode: string; index: number }> = [
 			{ mode: 'walk', index: node.childProperty },
 		]
@@ -347,13 +507,29 @@ export class MsgReader implements MsgReaderInterface {
 				node.children.push(item.index)
 			} else {
 				if (current.type === MSG_TYPE_DIRECTORY) {
-					this.#buildHierarchy(props, current)
+					this.#buildHierarchy(props, item.index, visited, depth + 1)
 				}
 				if (current.nextProperty !== MSG_PROP_NO_INDEX) {
+					if (siblingVisited.has(current.nextProperty)) {
+						throw new MsgError(
+							'CYCLE',
+							`Directory sibling chain revisits property index ${current.nextProperty}`,
+							{ index: current.nextProperty },
+						)
+					}
+					siblingVisited.add(current.nextProperty)
 					stack.push({ mode: 'walk', index: current.nextProperty })
 				}
 				stack.push({ mode: 'push', index: item.index })
 				if (current.previousProperty !== MSG_PROP_NO_INDEX) {
+					if (siblingVisited.has(current.previousProperty)) {
+						throw new MsgError(
+							'CYCLE',
+							`Directory sibling chain revisits property index ${current.previousProperty}`,
+							{ index: current.previousProperty },
+						)
+					}
+					siblingVisited.add(current.previousProperty)
 					stack.push({ mode: 'walk', index: current.previousProperty })
 				}
 			}
@@ -367,8 +543,10 @@ export class MsgReader implements MsgReaderInterface {
 		if (rootProp === undefined) return []
 
 		const table: number[] = []
+		const visited = new Set<number>()
 		let nextBlock = rootProp.startBlock
 		while (nextBlock !== MSG_END_OF_CHAIN) {
+			this.#trackSector(visited, nextBlock, 'Big block', this.#totalSectors, 'total sector count')
 			table.push(nextBlock)
 			nextBlock = this.#nextBlock(nextBlock)
 		}
@@ -390,6 +568,7 @@ export class MsgReader implements MsgReaderInterface {
 		const sector = this.#bigBlockTable[bigBlockNumber]
 		if (sector === undefined) return
 		const start = this.#blockOffset(sector) + bigBlockOffset
+		this.#assertBounds(start, blockSize)
 		const src = new Uint8Array(this.#view.buffer, this.#view.byteOffset + start, blockSize)
 		dest.set(src, destOffset)
 	}
@@ -407,8 +586,20 @@ export class MsgReader implements MsgReaderInterface {
 
 	#smallBlockChain(entry: MsgDirectoryEntry): number[] {
 		const chain: number[] = []
+		const visited = new Set<number>()
+		// the mini-FAT lives in this.#sbat's big sectors, each holding
+		// bigBlockLength int32 entries - that flat entry count, not the
+		// file's big-sector count, bounds a legitimate mini-stream chain
+		const capacity = this.#sbat.length * this.#bigBlockLength
 		let next = entry.startBlock
 		while (next !== MSG_END_OF_CHAIN) {
+			if (next < 0 || next >= capacity) {
+				throw new MsgError('MALFORMED', `Small block index ${next} exceeds mini-FAT capacity`, {
+					sector: next,
+					capacity,
+				})
+			}
+			this.#trackSector(visited, next, 'Small block', capacity, 'mini-FAT capacity')
 			chain.push(next)
 			next = this.#nextBlockSmall(next)
 		}
@@ -416,7 +607,13 @@ export class MsgReader implements MsgReaderInterface {
 	}
 
 	#readEntry(entry: MsgDirectoryEntry): Uint8Array {
-		if (!entry.sizeBlock) return new Uint8Array(0)
+		if (entry.sizeBlock <= 0) return new Uint8Array(0)
+		if (entry.sizeBlock > this.#byteLength) {
+			throw new MsgError('MALFORMED', 'Directory entry size exceeds file bounds', {
+				sizeBlock: entry.sizeBlock,
+				byteLength: this.#byteLength,
+			})
+		}
 
 		if (entry.sizeBlock < MSG_BIG_BLOCK_MIN_DOC_SIZE) {
 			const chain = this.#smallBlockChain(entry)
@@ -435,10 +632,13 @@ export class MsgReader implements MsgReaderInterface {
 		let remaining = entry.sizeBlock
 		let position = 0
 		const result = new Uint8Array(entry.sizeBlock)
+		const visited = new Set<number>()
 
 		while (remaining >= 1) {
+			this.#trackSector(visited, nextBlock, 'Entry block', this.#totalSectors, 'total sector count')
 			const start = this.#blockOffset(nextBlock)
 			const partSize = Math.min(remaining, this.#bigBlockSize)
+			this.#assertBounds(start, partSize)
 			const src = new Uint8Array(this.#view.buffer, this.#view.byteOffset + start, partSize)
 			result.set(src, position)
 			position += partSize
@@ -451,13 +651,178 @@ export class MsgReader implements MsgReaderInterface {
 	// === Field Extraction
 
 	#extractFields(): MsgFieldData {
+		const root = this.#properties[0]
+		if (root === undefined) {
+			throw new MsgError('MALFORMED', 'MSG file has no root directory entry')
+		}
+
 		const fields: MsgMutableFieldData = {
-			dataType: 'msg',
+			kind: 'msg',
 			attachments: [],
 			recipients: [],
 		}
-		this.#processDirectory(this.#properties[0], fields, 'root')
-		return fields as unknown as MsgFieldData
+		this.#processDirectory(root, fields, 'root')
+		return this.#toFieldData(fields)
+	}
+
+	// narrows an unknown-typed mutable field to a string
+	#str(mutable: MsgMutableFieldData, key: string): string | undefined {
+		const value = mutable[key]
+		return typeof value === 'string' ? value : undefined
+	}
+
+	// narrows an unknown-typed mutable field to a number
+	#num(mutable: MsgMutableFieldData, key: string): number | undefined {
+		const value = mutable[key]
+		return typeof value === 'number' ? value : undefined
+	}
+
+	// narrows an unknown-typed mutable field to a boolean
+	#bool(mutable: MsgMutableFieldData, key: string): boolean | undefined {
+		const value = mutable[key]
+		return typeof value === 'boolean' ? value : undefined
+	}
+
+	// narrows an unknown-typed mutable field to binary content
+	#bin(mutable: MsgMutableFieldData, key: string): Uint8Array | undefined {
+		const value = mutable[key]
+		return value instanceof Uint8Array ? value : undefined
+	}
+
+	// narrows an unknown-typed mutable field to a recipient role
+	#role(mutable: MsgMutableFieldData, key: string): MsgRecipientRole | undefined {
+		const value = mutable[key]
+		return value === 'to' || value === 'cc' || value === 'bcc' ? value : undefined
+	}
+
+	// builds the readonly public MsgFieldData explicitly, field by field,
+	// from the mutable accumulator - no type assertions
+	#toFieldData(mutable: MsgMutableFieldData): MsgFieldData {
+		const attachmentsSource = mutable.attachments
+		const attachments =
+			attachmentsSource === undefined
+				? undefined
+				: attachmentsSource.map((entry) => this.#toFieldData(entry))
+		const recipientsSource = mutable.recipients
+		const recipients =
+			recipientsSource === undefined
+				? undefined
+				: recipientsSource.map((entry) => this.#toFieldData(entry))
+		const innerSource = mutable.innerMsgContentFields
+		const innerMsgContentFields =
+			innerSource === undefined ? undefined : this.#toFieldData(innerSource)
+
+		return {
+			kind: mutable.kind,
+			// email properties
+			subject: this.#str(mutable, 'subject'),
+			senderName: this.#str(mutable, 'senderName'),
+			senderEmail: this.#str(mutable, 'senderEmail'),
+			senderAddressType: this.#str(mutable, 'senderAddressType'),
+			senderSmtpAddress: this.#str(mutable, 'senderSmtpAddress'),
+			sentRepresentingSmtpAddress: this.#str(mutable, 'sentRepresentingSmtpAddress'),
+			body: this.#str(mutable, 'body'),
+			headers: this.#str(mutable, 'headers'),
+			bodyHtml: this.#str(mutable, 'bodyHtml'),
+			html: this.#bin(mutable, 'html'),
+			compressedRtf: this.#bin(mutable, 'compressedRtf'),
+			messageClass: this.#str(mutable, 'messageClass'),
+			messageFlags: this.#num(mutable, 'messageFlags'),
+			messageId: this.#str(mutable, 'messageId'),
+			internetCodepage: this.#num(mutable, 'internetCodepage'),
+			messageCodepage: this.#num(mutable, 'messageCodepage'),
+			messageLocaleId: this.#num(mutable, 'messageLocaleId'),
+			clientSubmitTime: this.#str(mutable, 'clientSubmitTime'),
+			messageDeliveryTime: this.#str(mutable, 'messageDeliveryTime'),
+			creationTime: this.#str(mutable, 'creationTime'),
+			lastModificationTime: this.#str(mutable, 'lastModificationTime'),
+			lastModifierName: this.#str(mutable, 'lastModifierName'),
+			creatorSmtpAddress: this.#str(mutable, 'creatorSmtpAddress'),
+			lastModifierSmtpAddress: this.#str(mutable, 'lastModifierSmtpAddress'),
+			preview: this.#str(mutable, 'preview'),
+			conversationTopic: this.#str(mutable, 'conversationTopic'),
+			normalizedSubject: this.#str(mutable, 'normalizedSubject'),
+			// recipient properties
+			name: this.#str(mutable, 'name'),
+			email: this.#str(mutable, 'email'),
+			addressType: this.#str(mutable, 'addressType'),
+			smtpAddress: this.#str(mutable, 'smtpAddress'),
+			recipientRole: this.#role(mutable, 'recipientRole'),
+			// attachment properties
+			extension: this.#str(mutable, 'extension'),
+			fileNameShort: this.#str(mutable, 'fileNameShort'),
+			fileName: this.#str(mutable, 'fileName'),
+			contentId: this.#str(mutable, 'contentId'),
+			attachmentHidden: this.#bool(mutable, 'attachmentHidden'),
+			mimeType: this.#str(mutable, 'mimeType'),
+			contentLength: mutable.contentLength,
+			dataId: mutable.dataId,
+			folderId: mutable.folderId,
+			innerMsgContent: mutable.innerMsgContent,
+			innerMsgContentFields,
+			attachments,
+			recipients,
+			// contact properties
+			departmentName: this.#str(mutable, 'departmentName'),
+			middleName: this.#str(mutable, 'middleName'),
+			generation: this.#str(mutable, 'generation'),
+			surname: this.#str(mutable, 'surname'),
+			givenName: this.#str(mutable, 'givenName'),
+			companyName: this.#str(mutable, 'companyName'),
+			jobTitle: this.#str(mutable, 'jobTitle'),
+			location: this.#str(mutable, 'location'),
+			postalAddress: this.#str(mutable, 'postalAddress'),
+			streetAddress: this.#str(mutable, 'streetAddress'),
+			postalCode: this.#str(mutable, 'postalCode'),
+			country: this.#str(mutable, 'country'),
+			stateOrProvince: this.#str(mutable, 'stateOrProvince'),
+			homePhone: this.#str(mutable, 'homePhone'),
+			mobilePhone: this.#str(mutable, 'mobilePhone'),
+			businessPhone: this.#str(mutable, 'businessPhone'),
+			businessFax: this.#str(mutable, 'businessFax'),
+			businessHomePage: this.#str(mutable, 'businessHomePage'),
+			namePrefix: this.#str(mutable, 'namePrefix'),
+			homeAddressCity: this.#str(mutable, 'homeAddressCity'),
+			// appointment / calendar properties
+			appointmentStart: this.#str(mutable, 'appointmentStart'),
+			appointmentEnd: this.#str(mutable, 'appointmentEnd'),
+			clipStart: this.#str(mutable, 'clipStart'),
+			clipEnd: this.#str(mutable, 'clipEnd'),
+			timeZoneDescription: this.#str(mutable, 'timeZoneDescription'),
+			appointmentLocation: this.#str(mutable, 'appointmentLocation'),
+			appointmentOldLocation: this.#str(mutable, 'appointmentOldLocation'),
+			globalAppointmentId: this.#str(mutable, 'globalAppointmentId'),
+			// PidLid - common
+			votingResponse: this.#str(mutable, 'votingResponse'),
+			internetAccountName: this.#str(mutable, 'internetAccountName'),
+			// PidLid - address
+			yomiFirstName: this.#str(mutable, 'yomiFirstName'),
+			yomiLastName: this.#str(mutable, 'yomiLastName'),
+			yomiCompanyName: this.#str(mutable, 'yomiCompanyName'),
+			primaryEmailAddress: this.#str(mutable, 'primaryEmailAddress'),
+			primaryEmailDisplayName: this.#str(mutable, 'primaryEmailDisplayName'),
+			primaryEmailOriginalDisplayName: this.#str(mutable, 'primaryEmailOriginalDisplayName'),
+			fileUnder: this.#str(mutable, 'fileUnder'),
+			workAddressCity: this.#str(mutable, 'workAddressCity'),
+			workAddressStreet: this.#str(mutable, 'workAddressStreet'),
+			workAddressState: this.#str(mutable, 'workAddressState'),
+			workAddressPostalCode: this.#str(mutable, 'workAddressPostalCode'),
+			workAddressCountry: this.#str(mutable, 'workAddressCountry'),
+			workAddressCountryCode: this.#str(mutable, 'workAddressCountryCode'),
+			addressCountryCode: this.#str(mutable, 'addressCountryCode'),
+			contactWebPage: this.#str(mutable, 'contactWebPage'),
+			workAddress: this.#str(mutable, 'workAddress'),
+			instantMessagingAddress: this.#str(mutable, 'instantMessagingAddress'),
+			fax1AddressType: this.#str(mutable, 'fax1AddressType'),
+			fax1EmailAddress: this.#str(mutable, 'fax1EmailAddress'),
+			fax1OriginalDisplayName: this.#str(mutable, 'fax1OriginalDisplayName'),
+			fax2AddressType: this.#str(mutable, 'fax2AddressType'),
+			fax2EmailAddress: this.#str(mutable, 'fax2EmailAddress'),
+			fax2OriginalDisplayName: this.#str(mutable, 'fax2OriginalDisplayName'),
+			fax3AddressType: this.#str(mutable, 'fax3AddressType'),
+			fax3EmailAddress: this.#str(mutable, 'fax3EmailAddress'),
+			fax3OriginalDisplayName: this.#str(mutable, 'fax3OriginalDisplayName'),
+		}
 	}
 
 	#processDirectory(entry: MsgDirectoryEntry, fields: MsgMutableFieldData, subClass: string): void {
@@ -501,12 +866,12 @@ export class MsgReader implements MsgReaderInterface {
 		fields: MsgMutableFieldData,
 	): void {
 		if (child.name.indexOf(MSG_PREFIX_ATTACHMENT) === 0) {
-			const attachmentField: MsgMutableFieldData = { dataType: 'attachment' }
+			const attachmentField: MsgMutableFieldData = { kind: 'attachment' }
 			if (fields.attachments === undefined) fields.attachments = []
 			fields.attachments.push(attachmentField)
 			this.#processDirectory(child, attachmentField, 'attachment')
 		} else if (child.name.indexOf(MSG_PREFIX_RECIPIENT) === 0) {
-			const recipientField: MsgMutableFieldData = { dataType: 'recipient' }
+			const recipientField: MsgMutableFieldData = { kind: 'recipient' }
 			if (fields.recipients === undefined) fields.recipients = []
 			fields.recipients.push(recipientField)
 			this.#processDirectory(child, recipientField, 'recip')
@@ -516,7 +881,7 @@ export class MsgReader implements MsgReaderInterface {
 			const fieldType = this.#getDirectoryFieldType(child)
 			if (fieldType === MSG_FIELD_DIR_TYPE_INNER_MSG) {
 				const innerFields: MsgMutableFieldData = {
-					dataType: 'msg',
+					kind: 'msg',
 					attachments: [],
 					recipients: [],
 				}
@@ -595,8 +960,8 @@ export class MsgReader implements MsgReaderInterface {
 		let key: string | undefined =
 			MSG_FIELD_FULL_NAME_MAPPING[fullTag] ?? MSG_FIELD_NAME_MAPPING[fieldClass]
 
-		const classValue = parseInt(`0x${fieldClass}`)
-		if (classValue >= 0x8000) {
+		const classValue = parseInt(fieldClass, 16)
+		if (!Number.isNaN(classValue) && classValue >= 0x8000) {
 			const keyed = this.#privatePidToKeyed[classValue]
 			if (keyed !== undefined) {
 				if (keyed.useName) {

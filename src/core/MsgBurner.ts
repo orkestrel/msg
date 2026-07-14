@@ -6,7 +6,7 @@
  * attachments as standalone binary files.
  */
 
-import type { MsgBurnerInterface, MsgBurnerEntry, MsgBurnerLiteEntry } from '../types.js'
+import type { MsgBurnerInterface, MsgBurnerEntry, MsgBurnerLiteEntry } from './types.js'
 import {
 	MSG_FILE_HEADER,
 	MSG_TYPE_DIRECTORY,
@@ -22,11 +22,24 @@ import {
 	MSG_BURNER_FAT_SECTOR_MARKER,
 	MSG_BURNER_DIFAT_SECTOR_MARKER,
 	MSG_BURNER_ROOT_CLSID,
-} from '../constants.js'
-import { sectorsNeeded, compareCfbName } from '../helpers.js'
+	MSG_BURNER_NAME_MAX,
+} from './constants.js'
+import { sectorsNeeded, compareCfbName } from './helpers.js'
+import { MsgError } from './errors.js'
 
 // === MsgBurner
 
+/**
+ * Reconstitutes a valid CFB (Compound Binary File) from a flat list of
+ * {@link MsgBurnerEntry} descriptors — root storage at index 0, its
+ * children reachable through `children` indices.
+ *
+ * @remarks
+ * Builds a red-black directory tree, allocates FAT/mini-FAT/DIFAT
+ * sectors, then writes the header, directory entries, and stream data
+ * into a single binary. Used to extract embedded `.msg` attachments as
+ * standalone CFB files.
+ */
 export class MsgBurner implements MsgBurnerInterface {
 	#liteEntries: MsgBurnerLiteEntry[] = []
 	#fat: number[] = []
@@ -37,6 +50,8 @@ export class MsgBurner implements MsgBurnerInterface {
 	 *
 	 * @param entries - Flat entry list starting with Root Entry at index 0
 	 * @returns Complete CFB binary as Uint8Array
+	 * @throws {@link MsgError} with code `BURN` when an entry name exceeds
+	 * the {@link MSG_BURNER_NAME_MAX} UTF-16 code unit limit the CFB directory entry format allows
 	 */
 	burn(entries: readonly MsgBurnerEntry[]): Uint8Array {
 		this.#liteEntries = entries.map((entry) => ({
@@ -303,13 +318,27 @@ export class MsgBurner implements MsgBurnerInterface {
 			const le = this.#liteEntries[x]
 			const pos = MSG_BURNER_SECTOR_SIZE * (1 + entriesFirstSector) + MSG_BURNER_DIR_ENTRY_SIZE * x
 
-			let nameByteCount = 0
-			for (let i = 0; i < le.entry.name.length; i++) {
-				view.setUint16(pos + i * 2, le.entry.name.charCodeAt(i), true)
-				nameByteCount += 2
+			// CFB caps a directory entry name at MSG_BURNER_NAME_MAX UTF-16 code
+			// units + a NUL terminator inside the fixed 64-byte name field
+			// (offsets 0x00-0x3f). A longer name would overrun into the
+			// type/color/sibling fields that follow, so validate before
+			// writing any name bytes.
+			const name = le.entry.name
+			if (name.length > MSG_BURNER_NAME_MAX) {
+				throw new MsgError(
+					'BURN',
+					`directory entry name exceeds ${MSG_BURNER_NAME_MAX} characters`,
+					{ name },
+				)
 			}
 
-			view.setUint16(pos + 0x40, Math.min(64, nameByteCount + 2), true)
+			for (let i = 0; i < name.length; i++) {
+				view.setUint16(pos + i * 2, name.charCodeAt(i), true)
+			}
+			// NUL terminator + recorded byte length: (chars + 1) UTF-16 units.
+			view.setUint16(pos + name.length * 2, 0, true)
+
+			view.setUint16(pos + 0x40, (name.length + 1) * 2, true)
 			bytes[pos + 0x42] = le.entry.type
 			bytes[pos + 0x43] = le.red ? 0 : 1
 			view.setInt32(pos + 0x44, le.left, true)

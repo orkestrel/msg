@@ -2,25 +2,53 @@ import type {
 	Result,
 	Success,
 	Failure,
-	QueueEntryStatus,
 	EmailFormat,
 	MimeHeader,
 	MimePart,
 	EmailAttachment,
 	EmailMessage,
+	MsgEncoding,
 	MsgReaderInterface,
-	BrowserEngine,
-	BrowserConnection,
-	BrowserStatus,
-	BrowserWaitUntil,
-	PlaywrightPageLike,
-	PlaywrightContextLike,
-	PlaywrightBrowserLike,
-	PlaywrightEngineLike,
 } from './types.js'
-import { MIME_EXTENSIONS } from './constants.js'
+import { MsgError } from './errors.js'
+import {
+	MIME_EXTENSIONS,
+	MIME_MAX_DEPTH,
+	WINDOWS_1252_HIGH,
+	UTF8_SEQUENCE_MINIMUM,
+} from './constants.js'
 
-// === Result Guards
+// === Result Helpers
+
+/**
+ * Construct a {@link Success} wrapping a value.
+ *
+ * @param value - The value to wrap
+ * @returns A `Success<T>` result
+ *
+ * @example
+ * ```ts
+ * const result = success(42) // { success: true, value: 42 }
+ * ```
+ */
+export function success<T>(value: T): Success<T> {
+	return { success: true, value }
+}
+
+/**
+ * Construct a {@link Failure} wrapping an error.
+ *
+ * @param error - The error to wrap
+ * @returns A `Failure<E>` result
+ *
+ * @example
+ * ```ts
+ * const result = failure(new MsgError('MALFORMED', 'bad input'))
+ * ```
+ */
+export function failure<E>(error: E): Failure<E> {
+	return { success: false, error }
+}
 
 /**
  * Narrow a Result to Success.
@@ -50,66 +78,6 @@ export function isFailure<T, E>(result: Result<T, E>): result is Failure<E> {
  */
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/**
- * Narrow an unknown value to a valid QueueEntryStatus.
- *
- * @param value - Value to check
- * @returns True when value is a recognized status string
- */
-export function isQueueEntryStatus(value: unknown): value is QueueEntryStatus {
-	return (
-		value === 'pending' ||
-		value === 'scheduled' ||
-		value === 'active' ||
-		value === 'completed' ||
-		value === 'failed' ||
-		value === 'aborted' ||
-		value === 'expired'
-	)
-}
-
-// === NodeWorker Guards
-
-/**
- * Narrow an unknown value to a NodeWorker dispatch request.
- *
- * @param value - Value to check
- * @returns True when value has `id` (string) and `context` without a `type` field
- */
-export function isNodeWorkerRequest(
-	value: unknown,
-): value is { readonly id: string; readonly context: unknown } {
-	if (!isRecord(value)) return false
-	if (typeof value.id !== 'string') return false
-	if (!('context' in value)) return false
-	return !('type' in value)
-}
-
-/**
- * Narrow an unknown value to a NodeWorker abort control message.
- *
- * @param value - Value to check
- * @returns True when value has `id` (string) and `type` === 'abort'
- */
-export function isNodeWorkerAbortRequest(
-	value: unknown,
-): value is { readonly id: string; readonly type: 'abort' } {
-	if (!isRecord(value)) return false
-	return typeof value.id === 'string' && value.type === 'abort'
-}
-
-/**
- * Check whether an unknown outbound message is a result for a specific dispatch ID.
- *
- * @param value - Value to check
- * @param id - Expected dispatch ID
- * @returns True when value is a result-type message matching the ID
- */
-export function isNodeWorkerResponseForId(value: unknown, id: string): boolean {
-	if (!isRecord(value)) return false
-	return value.type === 'result' && value.id === id
 }
 
 // === Msg Helpers
@@ -150,8 +118,18 @@ export function removeTrailingNull(text: string): string {
  * @param offset - Byte offset to start reading
  * @param charCount - Number of UTF-16 code units to read
  * @returns Decoded string
+ * @throws {@link MsgError} with code `MALFORMED` when the requested range
+ * exceeds the view's bounds
  */
 export function readUtf16String(view: DataView, offset: number, charCount: number): string {
+	const end = offset + charCount * 2
+	if (offset < 0 || charCount < 0 || end > view.byteLength) {
+		throw new MsgError('MALFORMED', 'UTF-16 string range exceeds view bounds', {
+			offset,
+			charCount,
+			byteLength: view.byteLength,
+		})
+	}
 	let result = ''
 	for (let i = 0; i < charCount; i++) {
 		const code = view.getUint16(offset + i * 2, true)
@@ -161,38 +139,43 @@ export function readUtf16String(view: DataView, offset: number, charCount: numbe
 }
 
 /**
- * Read a Latin-1 (or custom encoding via TextDecoder) string from a Uint8Array.
+ * Read a non-Unicode (PT_STRING8) string from a byte array using a
+ * pure-ES decoder — no `TextDecoder` dependency, so this stays usable
+ * in the core's DOM/Node-free environment.
  *
  * @param data - Binary data
- * @param encoding - Optional encoding label (default 'windows-1252')
+ * @param encoding - Encoding to decode with (default `'windows-1252'`)
  * @returns Decoded string
+ *
+ * @example
+ * ```ts
+ * readAnsiString(new Uint8Array([0x93, 0x41, 0x94])) // '“A”'
+ * ```
  */
-export function readAnsiString(data: Uint8Array, encoding?: string): string {
-	const label = encoding ?? 'windows-1252'
-	try {
-		const decoder = new TextDecoder(label)
-		return decoder.decode(data)
-	} catch {
-		// Fallback to Latin-1 if encoding not supported
-		let result = ''
-		for (let i = 0; i < data.length; i++) {
-			result += String.fromCharCode(data[i])
-		}
-		return result
+export function readAnsiString(data: Uint8Array, encoding?: MsgEncoding): string {
+	const resolved = encoding ?? 'windows-1252'
+	if (resolved === 'utf-16le') {
+		const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+		return readUtf16String(view, 0, Math.floor(data.length / 2))
 	}
+	if (resolved === 'utf-8') return decodeUtf8(data)
+	if (resolved === 'latin1') return decodeLatin1(data)
+	return decodeWindows1252(data)
 }
 
 /**
  * Convert a Windows FILETIME (100-ns intervals since 1601-01-01) to a UTC date string.
+ * Combines the low/high 32-bit halves with `BigInt` so the 64-bit interval
+ * count never loses precision to float64 rounding.
  *
  * @param low - Low 32 bits of FILETIME
  * @param high - High 32 bits of FILETIME
  * @returns UTC date string
  */
 export function fileTimeToUtcString(low: number, high: number): string {
-	const fileTime = low + 4294967296.0 * high
-	const unixMs = (fileTime - 116444736000000000) / 10000
-	return new Date(unixMs).toUTCString()
+	const fileTime = BigInt(low >>> 0) + (BigInt(high >>> 0) << 32n)
+	const unixMs = (fileTime - 116444736000000000n) / 10000n
+	return new Date(Number(unixMs)).toUTCString()
 }
 
 /**
@@ -290,6 +273,262 @@ export function compareCfbName(a: string, b: string): number {
 	return 0
 }
 
+// === Pure-ES Encoding Decoders
+
+/**
+ * Decode a Base64 string into raw bytes without relying on `atob`.
+ * Ignores ASCII whitespace and tolerates missing padding.
+ *
+ * @param text - Base64-encoded string
+ * @returns Decoded byte array
+ * @throws {@link MsgError} with code `MALFORMED` when the string contains
+ * a character outside the Base64 alphabet
+ *
+ * @example
+ * ```ts
+ * decodeBase64('SGVsbG8=') // Uint8Array [72, 101, 108, 108, 111]
+ * ```
+ */
+export function decodeBase64(text: string): Uint8Array {
+	const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+	const cleaned = text.replace(/[ \t\n\r\f\v]+/g, '').replace(/=+$/, '')
+	const bytes: number[] = []
+	let buffer = 0
+	let bits = 0
+
+	for (const char of cleaned) {
+		const index = alphabet.indexOf(char)
+		if (index === -1) {
+			throw new MsgError('MALFORMED', `Invalid Base64 character: ${char}`, { char })
+		}
+		buffer = (buffer << 6) | index
+		bits += 6
+		if (bits >= 8) {
+			bits -= 8
+			bytes.push((buffer >> bits) & 0xff)
+		}
+	}
+
+	return new Uint8Array(bytes)
+}
+
+/**
+ * Encode a string into UTF-8 bytes, handling surrogate pairs.
+ * A lone (unpaired) surrogate encodes as U+FFFD.
+ *
+ * @param text - String to encode
+ * @returns UTF-8 byte array
+ *
+ * @example
+ * ```ts
+ * encodeUtf8('A') // Uint8Array [65]
+ * ```
+ */
+export function encodeUtf8(text: string): Uint8Array {
+	const bytes: number[] = []
+
+	for (let i = 0; i < text.length; i++) {
+		let code = text.charCodeAt(i)
+
+		if (code >= 0xd800 && code <= 0xdbff) {
+			const next = text.charCodeAt(i + 1)
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				code = (code - 0xd800) * 0x400 + (next - 0xdc00) + 0x10000
+				i++
+			} else {
+				code = 0xfffd
+			}
+		} else if (code >= 0xdc00 && code <= 0xdfff) {
+			code = 0xfffd
+		}
+
+		if (code < 0x80) {
+			bytes.push(code)
+		} else if (code < 0x800) {
+			bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f))
+		} else if (code < 0x10000) {
+			bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
+		} else {
+			bytes.push(
+				0xf0 | (code >> 18),
+				0x80 | ((code >> 12) & 0x3f),
+				0x80 | ((code >> 6) & 0x3f),
+				0x80 | (code & 0x3f),
+			)
+		}
+	}
+
+	return new Uint8Array(bytes)
+}
+
+/**
+ * Decode UTF-8 bytes into a string, WHATWG-style: an invalid byte
+ * sequence decodes as U+FFFD rather than throwing. Rejects overlong
+ * encodings, surrogate code points (0xD800-0xDFFF), and code points
+ * beyond 0x10FFFF — each invalid sequence yields exactly one U+FFFD
+ * and decoding resumes at the next lead byte.
+ *
+ * @param bytes - UTF-8 byte array
+ * @returns Decoded string
+ *
+ * @example
+ * ```ts
+ * decodeUtf8(new Uint8Array([65])) // 'A'
+ * decodeUtf8(new Uint8Array([0xff])) // '�'
+ * ```
+ */
+export function decodeUtf8(bytes: Uint8Array): string {
+	let result = ''
+	let i = 0
+
+	while (i < bytes.length) {
+		const byte0 = bytes[i]
+
+		if (byte0 < 0x80) {
+			result += String.fromCharCode(byte0)
+			i++
+			continue
+		}
+
+		let length = 0
+		let codePoint = 0
+		if ((byte0 & 0xe0) === 0xc0) {
+			length = 1
+			codePoint = byte0 & 0x1f
+		} else if ((byte0 & 0xf0) === 0xe0) {
+			length = 2
+			codePoint = byte0 & 0x0f
+		} else if ((byte0 & 0xf8) === 0xf0) {
+			length = 3
+			codePoint = byte0 & 0x07
+		} else {
+			result += '�'
+			i++
+			continue
+		}
+
+		if (i + length >= bytes.length) {
+			result += '�'
+			i++
+			continue
+		}
+
+		let valid = true
+		let value = codePoint
+		for (let j = 1; j <= length; j++) {
+			const next = bytes[i + j]
+			if ((next & 0xc0) !== 0x80) {
+				valid = false
+				break
+			}
+			value = (value << 6) | (next & 0x3f)
+		}
+
+		if (!valid) {
+			result += '�'
+			i++
+			continue
+		}
+
+		const minimum = UTF8_SEQUENCE_MINIMUM[length]
+		const isOverlong = minimum !== undefined && value < minimum
+		const isSurrogate = value >= 0xd800 && value <= 0xdfff
+		const isOutOfRange = value > 0x10ffff
+
+		if (isOverlong || isSurrogate || isOutOfRange) {
+			result += '�'
+			i += length + 1
+			continue
+		}
+
+		i += length + 1
+
+		if (value >= 0x10000) {
+			value -= 0x10000
+			result += String.fromCharCode(0xd800 + (value >> 10), 0xdc00 + (value & 0x3ff))
+		} else {
+			result += String.fromCharCode(value)
+		}
+	}
+
+	return result
+}
+
+/**
+ * Decode Latin-1 (ISO-8859-1) bytes into a string, byte-for-code-point.
+ *
+ * @param bytes - Latin-1 byte array
+ * @returns Decoded string
+ *
+ * @example
+ * ```ts
+ * decodeLatin1(new Uint8Array([0xe9])) // 'é'
+ * ```
+ */
+export function decodeLatin1(bytes: Uint8Array): string {
+	let result = ''
+	for (let i = 0; i < bytes.length; i++) {
+		result += String.fromCharCode(bytes[i])
+	}
+	return result
+}
+
+/**
+ * Decode Windows-1252 bytes into a string. Identical to {@link decodeLatin1}
+ * except for the 0x80-0x9F range, which maps through {@link WINDOWS_1252_HIGH}.
+ *
+ * @param bytes - Windows-1252 byte array
+ * @returns Decoded string
+ *
+ * @example
+ * ```ts
+ * decodeWindows1252(new Uint8Array([0x93])) // '“'
+ * ```
+ */
+export function decodeWindows1252(bytes: Uint8Array): string {
+	let result = ''
+	for (let i = 0; i < bytes.length; i++) {
+		const byte = bytes[i]
+		if (byte >= 0x80 && byte <= 0x9f) {
+			result += String.fromCodePoint(WINDOWS_1252_HIGH[byte - 0x80])
+		} else {
+			result += String.fromCharCode(byte)
+		}
+	}
+	return result
+}
+
+/**
+ * Resolve a free-form charset label (as seen in a MIME `charset` parameter)
+ * to a supported {@link MsgEncoding}. Unknown or absent labels fall back
+ * to `'utf-8'`.
+ *
+ * @param label - Charset label to resolve (case-insensitive)
+ * @returns Resolved encoding
+ *
+ * @example
+ * ```ts
+ * resolveEncoding('ISO-8859-1') // 'latin1'
+ * resolveEncoding(undefined) // 'utf-8'
+ * ```
+ */
+export function resolveEncoding(label: string | undefined): MsgEncoding {
+	const lower = label?.trim().toLowerCase()
+	if (lower === 'utf-8' || lower === 'utf8') return 'utf-8'
+	if (lower === 'utf-16le' || lower === 'utf-16') return 'utf-16le'
+	if (lower === 'windows-1252' || lower === 'cp1252') return 'windows-1252'
+	if (
+		lower === 'us-ascii' ||
+		lower === 'ascii' ||
+		lower === 'iso-8859-1' ||
+		lower === 'iso8859-1' ||
+		lower === 'latin1'
+	) {
+		return 'latin1'
+	}
+	return 'utf-8'
+}
+
 // === EmailParser Helpers
 
 /**
@@ -303,20 +542,30 @@ export function isEmailFormat(value: unknown): value is EmailFormat {
 }
 
 /**
- * Derive the EmailFormat from a File's name and MIME type.
+ * Derive the EmailFormat from a file name and/or MIME type.
  * Returns undefined when the format cannot be determined.
  *
- * @param file - File to inspect
+ * @param name - File name to inspect
+ * @param mime - MIME type to inspect
  * @returns Detected format or undefined
+ *
+ * @example
+ * ```ts
+ * detectFormat('message.eml', undefined) // 'eml'
+ * detectFormat(undefined, 'application/vnd.ms-outlook') // 'msg'
+ * ```
  */
-export function detectFormat(file: File): EmailFormat | undefined {
-	const lower = file.name.toLowerCase()
+export function detectFormat(
+	name: string | undefined,
+	mime: string | undefined,
+): EmailFormat | undefined {
+	const lower = name?.toLowerCase()
 
-	if (lower.endsWith('.eml')) return 'eml'
-	if (lower.endsWith('.msg')) return 'msg'
+	if (lower?.endsWith('.eml') === true) return 'eml'
+	if (lower?.endsWith('.msg') === true) return 'msg'
 
-	if (file.type === 'message/rfc822') return 'eml'
-	if (file.type === 'application/vnd.ms-outlook') return 'msg'
+	if (mime === 'message/rfc822') return 'eml'
+	if (mime === 'application/vnd.ms-outlook') return 'msg'
 
 	return undefined
 }
@@ -372,12 +621,23 @@ export function parseMimeHeaders(text: string): ReadonlyMap<string, MimeHeader> 
 
 /**
  * Parse a raw RFC 2822 / MIME text string into a MimePart tree.
- * Line endings are normalised to \n before processing.
+ * Line endings are normalised to \n before processing. Recursion is
+ * capped at {@link MIME_MAX_DEPTH} to guard against a hostile or
+ * pathological multipart nesting cycle.
  *
  * @param raw - Raw MIME text
+ * @param depth - Current recursion depth (internal; callers omit this)
  * @returns Parsed MimePart tree
+ * @throws {@link MsgError} with code `CYCLE` when nesting exceeds {@link MIME_MAX_DEPTH}
  */
-export function parseMimePart(raw: string): MimePart {
+export function parseMimePart(raw: string, depth = 0): MimePart {
+	if (depth > MIME_MAX_DEPTH) {
+		throw new MsgError('CYCLE', 'MIME multipart nesting exceeds maximum depth', {
+			depth,
+			max: MIME_MAX_DEPTH,
+		})
+	}
+
 	const normalised = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 	const split = normalised.indexOf('\n\n')
 	const headerText = split === -1 ? normalised : normalised.slice(0, split)
@@ -398,12 +658,12 @@ export function parseMimePart(raw: string): MimePart {
 		for (const line of lines) {
 			const trimmed = line.trimEnd()
 			if (trimmed === delimiter + '--') {
-				if (inside && current.length > 0) parts.push(parseMimePart(current.join('\n')))
+				if (inside && current.length > 0) parts.push(parseMimePart(current.join('\n'), depth + 1))
 				inside = false
 				break
 			}
 			if (trimmed === delimiter) {
-				if (inside && current.length > 0) parts.push(parseMimePart(current.join('\n')))
+				if (inside && current.length > 0) parts.push(parseMimePart(current.join('\n'), depth + 1))
 				current = []
 				inside = true
 				continue
@@ -411,7 +671,7 @@ export function parseMimePart(raw: string): MimePart {
 			if (inside) current.push(line)
 		}
 
-		if (inside && current.length > 0) parts.push(parseMimePart(current.join('\n')))
+		if (inside && current.length > 0) parts.push(parseMimePart(current.join('\n'), depth + 1))
 	}
 
 	return { headers, body, parts }
@@ -423,18 +683,14 @@ export function parseMimePart(raw: string): MimePart {
  * @param body - Raw encoded string
  * @param encoding - Encoding type (e.g., 'base64', 'quoted-printable')
  * @returns Decoded byte array
+ * @throws {@link MsgError} with code `MALFORMED` when `encoding` is `'base64'`
+ * and `body` contains an invalid Base64 character
  */
 export function decodeMimeEncoding(body: string, encoding: string): Uint8Array {
 	const enc = encoding.toLowerCase()
 
 	if (enc === 'base64') {
-		const clean = body.replace(/\s+/g, '')
-		const binary = atob(clean)
-		const bytes = new Uint8Array(binary.length)
-		for (let i = 0; i < binary.length; i++) {
-			bytes[i] = binary.charCodeAt(i)
-		}
-		return bytes
+		return decodeBase64(body)
 	}
 
 	if (enc === 'quoted-printable') {
@@ -445,9 +701,8 @@ export function decodeMimeEncoding(body: string, encoding: string): Uint8Array {
 		while (i < unwrapped.length) {
 			if (unwrapped[i] === '=' && i + 2 < unwrapped.length) {
 				const hex = unwrapped.slice(i + 1, i + 3)
-				const byte = parseInt(hex, 16)
-				if (!isNaN(byte)) {
-					result.push(byte)
+				if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+					result.push(parseInt(hex, 16))
 					i += 3
 					continue
 				}
@@ -459,15 +714,16 @@ export function decodeMimeEncoding(body: string, encoding: string): Uint8Array {
 		return new Uint8Array(result)
 	}
 
-	return new TextEncoder().encode(body)
+	return encodeUtf8(body)
 }
 
 /**
- * Decode a MIME-encoded body into a text string based on charset.
+ * Decode a MIME-encoded body into a text string based on an arbitrary
+ * charset label, resolved via {@link resolveEncoding}.
  *
  * @param body - Raw encoded string
- * @param encoding - Encoding type
- * @param charset - Character set (e.g., 'utf-8')
+ * @param encoding - Transfer encoding type
+ * @param charset - Character set label (e.g., 'utf-8')
  * @returns Decoded string
  */
 export function decodeMimeText(body: string, encoding: string, charset: string): string {
@@ -476,11 +732,7 @@ export function decodeMimeText(body: string, encoding: string, charset: string):
 		return body // Return directly for 7bit/8bit text
 	}
 	const bytes = decodeMimeEncoding(body, encoding)
-	try {
-		return new TextDecoder(charset || 'utf-8').decode(bytes)
-	} catch {
-		return new TextDecoder('utf-8').decode(bytes)
-	}
+	return readAnsiString(bytes, resolveEncoding(charset))
 }
 
 /**
@@ -496,7 +748,13 @@ export function decodeMimeText(body: string, encoding: string, charset: string):
  * ```
  */
 export function decodeMimeWords(text: string): string {
-	return text.replace(
+	// RFC 2047 6.2: linear whitespace between two adjacent encoded-words is
+	// part of the encoding, not content — drop it before decoding.
+	const collapsed = text.replace(
+		/(=\?[^?]+\?[BbQq]\?[^?]*\?=)[ \t\r\n]+(?==\?[^?]+\?[BbQq]\?[^?]*\?=)/g,
+		'$1',
+	)
+	return collapsed.replace(
 		/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g,
 		(_match, charset: string, enc: string, encoded: string) => {
 			try {
@@ -505,7 +763,7 @@ export function decodeMimeWords(text: string): string {
 					upper === 'B'
 						? decodeMimeEncoding(encoded, 'base64')
 						: decodeMimeEncoding(encoded.replace(/_/g, ' '), 'quoted-printable')
-				return new TextDecoder(charset).decode(bytes)
+				return readAnsiString(bytes, resolveEncoding(charset))
 			} catch {
 				return encoded
 			}
@@ -532,17 +790,16 @@ export function formatEmailAddress(name: string | undefined, email: string | und
  * Extract a single EmailMessage from a parsed MsgReader.
  * Reads field data and attachments from the reader interface.
  *
+ * Each attachment is read independently: a corrupt attachment throws
+ * from `reader.attachment(i)` is caught and that attachment is skipped
+ * so the rest of the message still parses. This containment keeps one
+ * damaged attachment stream from failing the entire message extraction.
+ *
  * @param reader - A parsed MsgReaderInterface instance
  * @returns Structured EmailMessage
- *
- * @throws When MsgReader reports a parse error
  */
 export function extractMessageFromMsg(reader: MsgReaderInterface): EmailMessage {
 	const data = reader.parse()
-
-	if (data.error !== undefined) {
-		throw new Error(data.error)
-	}
 
 	const from = formatEmailAddress(data.senderName, data.senderSmtpAddress ?? data.senderEmail)
 
@@ -570,13 +827,18 @@ export function extractMessageFromMsg(reader: MsgReaderInterface): EmailMessage 
 		if (attachment === undefined) continue
 		if (attachment.attachmentHidden === true) continue
 		if (attachment.innerMsgContent === true) continue
-		const extracted = reader.attachment(i)
-		attachments.push({
-			name: extracted.fileName,
-			mimeType: attachment.mimeType ?? 'application/octet-stream',
-			size: extracted.content.length,
-			bytes: extracted.content,
-		})
+		try {
+			const extracted = reader.attachment(i)
+			attachments.push({
+				name: extracted.fileName,
+				mimeType: attachment.mimeType ?? 'application/octet-stream',
+				size: extracted.content.length,
+				bytes: extracted.content,
+			})
+		} catch {
+			// A single corrupt attachment stream must not fail the whole message.
+			continue
+		}
 	}
 
 	return {
@@ -692,6 +954,10 @@ export function extractMessage(part: MimePart): EmailMessage {
 /**
  * Infers the file extension for an attachment based on its filename or MIME type.
  * Returns the extension including the dot (e.g., '.jpg').
+ *
+ * @param mimeType - MIME type to infer from
+ * @param fileName - File name to infer from
+ * @returns Inferred extension, or `.bin` when neither hint resolves
  */
 export function inferExtension(mimeType?: string, fileName?: string): string {
 	if (fileName !== undefined) {
@@ -714,125 +980,4 @@ export function inferExtension(mimeType?: string, fileName?: string): string {
 	}
 
 	return '.bin'
-}
-
-// === Browser Guards
-
-/**
- * Narrow an unknown value to BrowserEngine.
- *
- * @param value - Value to check
- * @returns True when value is a valid BrowserEngine
- */
-export function isBrowserEngine(value: unknown): value is BrowserEngine {
-	return value === 'chromium' || value === 'firefox' || value === 'webkit'
-}
-
-/**
- * Narrow an unknown value to BrowserStatus.
- *
- * @param value - Value to check
- * @returns True when value is a valid BrowserStatus
- */
-export function isBrowserStatus(value: unknown): value is BrowserStatus {
-	return (
-		value === 'idle' ||
-		value === 'connecting' ||
-		value === 'connected' ||
-		value === 'disconnected' ||
-		value === 'error'
-	)
-}
-
-/**
- * Narrow an unknown value to BrowserConnection.
- *
- * @param value - Value to check
- * @returns True when value is a valid BrowserConnection
- */
-export function isBrowserConnection(value: unknown): value is BrowserConnection {
-	return value === 'cdp' || value === 'launch' || value === 'persistent'
-}
-
-/**
- * Narrow an unknown value to BrowserWaitUntil.
- *
- * @param value - Value to check
- * @returns True when value is a valid BrowserWaitUntil
- */
-export function isBrowserWaitUntil(value: unknown): value is BrowserWaitUntil {
-	return (
-		value === 'load' ||
-		value === 'domcontentloaded' ||
-		value === 'networkidle' ||
-		value === 'commit'
-	)
-}
-
-/**
- * Narrow an unknown value to PlaywrightPageLike.
- * Duck-type check validating the subset of Playwright methods used.
- *
- * @param value - Value to check
- * @returns True when value matches the PlaywrightPageLike shape
- */
-export function isPlaywrightPageLike(value: unknown): value is PlaywrightPageLike {
-	return (
-		isRecord(value) &&
-		typeof value['url'] === 'function' &&
-		typeof value['title'] === 'function' &&
-		typeof value['goto'] === 'function' &&
-		typeof value['content'] === 'function' &&
-		typeof value['evaluate'] === 'function' &&
-		typeof value['click'] === 'function' &&
-		typeof value['fill'] === 'function' &&
-		typeof value['selectOption'] === 'function' &&
-		typeof value['waitForSelector'] === 'function'
-	)
-}
-
-/**
- * Narrow an unknown value to PlaywrightContextLike.
- *
- * @param value - Value to check
- * @returns True when value matches the PlaywrightContextLike shape
- */
-export function isPlaywrightContextLike(value: unknown): value is PlaywrightContextLike {
-	return (
-		isRecord(value) &&
-		typeof value['newPage'] === 'function' &&
-		typeof value['pages'] === 'function' &&
-		typeof value['close'] === 'function'
-	)
-}
-
-/**
- * Narrow an unknown value to PlaywrightBrowserLike.
- *
- * @param value - Value to check
- * @returns True when value matches the PlaywrightBrowserLike shape
- */
-export function isPlaywrightBrowserLike(value: unknown): value is PlaywrightBrowserLike {
-	return (
-		isRecord(value) &&
-		typeof value['newContext'] === 'function' &&
-		typeof value['contexts'] === 'function' &&
-		typeof value['close'] === 'function' &&
-		typeof value['isConnected'] === 'function'
-	)
-}
-
-/**
- * Narrow an unknown value to PlaywrightEngineLike.
- *
- * @param value - Value to check
- * @returns True when value matches the PlaywrightEngineLike shape
- */
-export function isPlaywrightEngineLike(value: unknown): value is PlaywrightEngineLike {
-	return (
-		isRecord(value) &&
-		typeof value['connectOverCDP'] === 'function' &&
-		typeof value['launch'] === 'function' &&
-		typeof value['launchPersistentContext'] === 'function'
-	)
 }

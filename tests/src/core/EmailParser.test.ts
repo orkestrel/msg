@@ -1,424 +1,374 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-	createEmailParser,
-	createMsgReader,
-	detectFormat,
-	parseMimePart,
-	decodeMimeWords,
-	extractMessage,
-	extractMessageFromMsg,
-	isEmailFormat,
-	isUnsupportedFormatError,
-	isParseError,
-	isEmailParserError,
-} from 'keepalive'
+import { createEmailParser, detectFormat, isMsgError, isSuccess, isFailure } from '@src/core'
+import { asciiBytes, buildEml, buildNestedMultipart, expectDefined } from '../../setup.js'
 
-// === Helpers
-
-const fixturesDir = join(fileURLToPath(import.meta.url), '../../readers/fixtures')
-
-function makeFile(name: string, content: string, type = ''): File {
-	return new File([content], name, { type })
-}
-
-function makeBinaryFile(name: string, bytes: Uint8Array, type = ''): File {
-	return new File([new Uint8Array(bytes)], name, { type })
-}
-
-function loadMsgBuffer(fileName: string): ArrayBuffer {
-	const buffer = readFileSync(join(fixturesDir, fileName))
-	return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
-}
+// The EmailParser — parses raw .eml (RFC 2822/MIME) and .msg (CFB/OLE2) bytes
+// into a structured EmailChain via a single synchronous `parse`. Format is
+// detected from the file name extension, an explicit MIME type, or (when
+// neither resolves it) a CFB magic-header sniff; every failure — an
+// unrecognized format or a malformed/truncated file — surfaces as a
+// `Result` Failure wrapping a typed MsgError rather than throwing across
+// the parse() boundary (AGENTS §12). Driven with pure-ES fixtures (buildEml,
+// buildNestedMultipart) and the four binary .msg fixtures — no mocks.
 
 // === Fixtures
 
-const PLAIN_EML = [
-	'From: Alice <alice@example.com>',
-	'To: Bob <bob@example.com>',
-	'Subject: Hello',
-	'Date: Mon, 01 Jan 2024 12:00:00 +0000',
-	'MIME-Version: 1.0',
-	'Content-Type: text/plain; charset=utf-8',
-	'Content-Transfer-Encoding: 7bit',
-	'',
-	'Hello, world!',
-].join('\r\n')
+const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 
-const MULTIPART_EML = [
-	'From: Alice <alice@example.com>',
-	'To: Bob <bob@example.com>',
-	'Subject: Multipart test',
-	'MIME-Version: 1.0',
-	'Content-Type: multipart/mixed; boundary="boundary123"',
-	'',
-	'--boundary123',
-	'Content-Type: text/plain; charset=utf-8',
-	'',
-	'See attached.',
-	'--boundary123',
-	'Content-Type: application/pdf; name="report.pdf"',
-	'Content-Disposition: attachment; filename="report.pdf"',
-	'Content-Transfer-Encoding: base64',
-	'',
-	btoa('fake-pdf-bytes'),
-	'--boundary123--',
-].join('\r\n')
+function readFixture(name: string): Uint8Array {
+	return readFileSync(join(fixturesDir, name))
+}
 
-const ALTERNATIVE_EML = [
-	'From: sender@example.com',
-	'To: recipient@example.com',
-	'Subject: Alt test',
-	'MIME-Version: 1.0',
-	'Content-Type: multipart/alternative; boundary="alt"',
-	'',
-	'--alt',
-	'Content-Type: text/plain; charset=utf-8',
-	'',
-	'Plain text version',
-	'--alt',
-	'Content-Type: text/html; charset=utf-8',
-	'',
-	'<p>HTML version</p>',
-	'--alt--',
-].join('\r\n')
+const MSG_FIXTURES = ['test.msg', 'attachmentFiles.msg', 'msgInMsg.msg', 'unicode1.msg'] as const
 
-// === isEmailFormat
+// === Detection matrix
 
-describe('isEmailFormat', () => {
-	it('returns true for eml', () => {
-		expect(isEmailFormat('eml')).toBe(true)
+describe('EmailParser — format detection', () => {
+	it('parses a .msg fixture named "x.msg" as msg', () => {
+		const parser = createEmailParser()
+		const result = parser.parse({ bytes: readFixture('test.msg'), name: 'x.msg' })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		expect(result.value.format).toBe('msg')
 	})
 
-	it('returns true for msg', () => {
-		expect(isEmailFormat('msg')).toBe(true)
+	it('parses the same .msg bytes with no name and no mime via the CFB magic sniff', () => {
+		const parser = createEmailParser()
+		const result = parser.parse({ bytes: readFixture('test.msg') })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		expect(result.value.format).toBe('msg')
 	})
 
-	it('returns false for unknown string', () => {
-		expect(isEmailFormat('pdf')).toBe(false)
+	it('parses an eml built via buildEml with name "x.eml" as eml', () => {
+		const parser = createEmailParser()
+		const bytes = buildEml(
+			[
+				['From', 'a@b.com'],
+				['Content-Type', 'text/plain; charset=utf-8'],
+			],
+			'Hello',
+		)
+		const result = parser.parse({ bytes, name: 'x.eml' })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		expect(result.value.format).toBe('eml')
 	})
 
-	it('returns false for non-string', () => {
-		expect(isEmailFormat(42)).toBe(false)
-		expect(isEmailFormat(null)).toBe(false)
-	})
-})
+	it('returns a Failure with code UNSUPPORTED for an unknown name and non-CFB bytes', () => {
+		const parser = createEmailParser()
+		const bytes = asciiBytes('plain content, not a recognized format')
+		const result = parser.parse({ bytes, name: 'x.xyz' })
 
-// === detectFormat
-
-describe('detectFormat', () => {
-	it('detects .eml by extension', () => {
-		expect(detectFormat(makeFile('email.eml', ''))).toBe('eml')
+		expect(isFailure(result)).toBe(true)
+		if (!isFailure(result)) return
+		expect(isMsgError(result.error)).toBe(true)
+		expect(result.error.code).toBe('UNSUPPORTED')
 	})
 
-	it('detects .msg by extension', () => {
-		expect(detectFormat(makeFile('email.msg', ''))).toBe('msg')
+	it('detects eml via a message/rfc822 mime with no name', () => {
+		const parser = createEmailParser()
+		const bytes = buildEml(
+			[
+				['From', 'a@b.com'],
+				['Content-Type', 'text/plain; charset=utf-8'],
+			],
+			'Hello',
+		)
+		const result = parser.parse({ bytes, mime: 'message/rfc822' })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		expect(result.value.format).toBe('eml')
 	})
 
-	it('detects eml by MIME type', () => {
-		expect(detectFormat(makeFile('email', '', 'message/rfc822'))).toBe('eml')
+	it('detects msg via an application/vnd.ms-outlook mime with no name', () => {
+		const parser = createEmailParser()
+		const result = parser.parse({
+			bytes: readFixture('test.msg'),
+			mime: 'application/vnd.ms-outlook',
+		})
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		expect(result.value.format).toBe('msg')
 	})
 
-	it('detects msg by MIME type', () => {
-		expect(detectFormat(makeFile('email', '', 'application/vnd.ms-outlook'))).toBe('msg')
-	})
-
-	it('returns undefined for unknown format', () => {
-		expect(detectFormat(makeFile('file.txt', ''))).toBeUndefined()
-	})
-
-	it('is case-insensitive for extension', () => {
-		expect(detectFormat(makeFile('EMAIL.EML', ''))).toBe('eml')
-		expect(detectFormat(makeFile('FILE.MSG', ''))).toBe('msg')
+	it('detectFormat itself resolves by extension and mime, and returns undefined otherwise', () => {
+		expect(detectFormat('message.eml', undefined)).toBe('eml')
+		expect(detectFormat('message.msg', undefined)).toBe('msg')
+		expect(detectFormat(undefined, 'message/rfc822')).toBe('eml')
+		expect(detectFormat(undefined, 'application/vnd.ms-outlook')).toBe('msg')
+		expect(detectFormat('file.txt', undefined)).toBeUndefined()
+		expect(detectFormat(undefined, undefined)).toBeUndefined()
 	})
 })
 
-// === parseMimePart
+// === .eml content
 
-describe('parseMimePart', () => {
-	it('parses headers correctly', () => {
-		const part = parseMimePart(PLAIN_EML)
-		expect(part.headers.get('from')?.value).toBe('Alice <alice@example.com>')
-		expect(part.headers.get('subject')?.value).toBe('Hello')
-	})
+describe('EmailParser — .eml content extraction', () => {
+	it('parses a single-part plain-text message into subject/from/to/text', () => {
+		const parser = createEmailParser()
+		const bytes = buildEml(
+			[
+				['From', 'Alice <alice@example.com>'],
+				['To', 'Bob <bob@example.com>'],
+				['Subject', 'Hello'],
+				['Content-Type', 'text/plain; charset=utf-8'],
+			],
+			'Hello, world!',
+		)
+		const result = parser.parse({ bytes, name: 'plain.eml' })
 
-	it('handles CRLF and LF line endings', () => {
-		const lf = PLAIN_EML.replace(/\r\n/g, '\n')
-		const part = parseMimePart(lf)
-		expect(part.headers.get('from')?.value).toBe('Alice <alice@example.com>')
-	})
-
-	it('parses content-type parameters', () => {
-		const part = parseMimePart(PLAIN_EML)
-		expect(part.headers.get('content-type')?.params.get('charset')).toBe('utf-8')
-	})
-
-	it('parses multipart boundary from content-type', () => {
-		const part = parseMimePart(MULTIPART_EML)
-		expect(part.headers.get('content-type')?.params.get('boundary')).toBe('boundary123')
-	})
-
-	it('splits multipart into child parts', () => {
-		const part = parseMimePart(MULTIPART_EML)
-		expect(part.parts).toHaveLength(2)
-	})
-
-	it('returns empty parts for non-multipart', () => {
-		const part = parseMimePart(PLAIN_EML)
-		expect(part.parts).toHaveLength(0)
-	})
-
-	it('handles missing final boundary gracefully', () => {
-		const noFinal = MULTIPART_EML.replace('--boundary123--', '--boundary123')
-		const part = parseMimePart(noFinal)
-		expect(part.parts.length).toBeGreaterThan(0)
-	})
-
-	it('handles folded headers', () => {
-		const folded = ['Subject: This is a very', ' long subject line', '', 'Body'].join('\n')
-		const part = parseMimePart(folded)
-		expect(part.headers.get('subject')?.value).toBe('This is a very long subject line')
-	})
-
-	it('handles empty body', () => {
-		const headersOnly = 'From: a@b.com\nSubject: Test'
-		const part = parseMimePart(headersOnly)
-		expect(part.body).toBe('')
-	})
-})
-
-// === decodeMimeWords
-
-describe('decodeMimeWords', () => {
-	it('decodes base64 encoded word', () => {
-		expect(decodeMimeWords('=?UTF-8?B?SGVsbG8=?=')).toBe('Hello')
-	})
-
-	it('decodes quoted-printable encoded word', () => {
-		expect(decodeMimeWords('=?UTF-8?Q?Hello_World?=')).toBe('Hello World')
-	})
-
-	it('returns plain text unchanged', () => {
-		expect(decodeMimeWords('Plain subject')).toBe('Plain subject')
-	})
-
-	it('decodes encoded word embedded in longer string', () => {
-		const result = decodeMimeWords('Re: =?UTF-8?B?SGVsbG8=?= there')
-		expect(result).toBe('Re: Hello there')
-	})
-
-	it('handles lowercase encoding marker', () => {
-		expect(decodeMimeWords('=?utf-8?b?SGVsbG8=?=')).toBe('Hello')
-	})
-
-	it('falls back on invalid charset', () => {
-		// Invalid charset should return the encoded text as-is
-		const result = decodeMimeWords('=?INVALID-999?B?SGVsbG8=?=')
-		expect(result).toBe('SGVsbG8=')
-	})
-})
-
-// === extractMessage
-
-describe('extractMessage', () => {
-	it('extracts from, to, subject, date from plain .eml', () => {
-		const part = parseMimePart(PLAIN_EML)
-		const message = extractMessage(part)
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		const message = expectDefined(result.value.messages[0])
 		expect(message.from).toBe('Alice <alice@example.com>')
 		expect(message.to).toEqual(['Bob <bob@example.com>'])
 		expect(message.subject).toBe('Hello')
-		expect(message.date).toBeInstanceOf(Date)
-	})
-
-	it('extracts plain text body', () => {
-		const part = parseMimePart(PLAIN_EML)
-		const message = extractMessage(part)
 		expect(message.text).toContain('Hello, world!')
 	})
 
-	it('extracts text and html from multipart/alternative', () => {
-		const part = parseMimePart(ALTERNATIVE_EML)
-		const message = extractMessage(part)
+	it('parses a multipart/alternative message into both text and html', () => {
+		const parser = createEmailParser()
+		const altBody = [
+			'--alt',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Plain text version',
+			'--alt',
+			'Content-Type: text/html; charset=utf-8',
+			'',
+			'<p>HTML version</p>',
+			'--alt--',
+		].join('\r\n')
+		const bytes = buildEml(
+			[
+				['From', 'sender@example.com'],
+				['To', 'recipient@example.com'],
+				['Subject', 'Alt test'],
+				['Content-Type', 'multipart/alternative; boundary="alt"'],
+			],
+			altBody,
+		)
+		const result = parser.parse({ bytes, name: 'alt.eml' })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		const message = expectDefined(result.value.messages[0])
 		expect(message.text).toContain('Plain text version')
 		expect(message.html).toContain('<p>HTML version</p>')
 	})
 
-	it('extracts attachment from multipart/mixed', () => {
-		const part = parseMimePart(MULTIPART_EML)
-		const message = extractMessage(part)
-		expect(message.attachments).toHaveLength(1)
-		expect(message.attachments[0]?.name).toBe('report.pdf')
-		expect(message.attachments[0]?.mimeType).toBe('application/pdf')
-	})
-
-	it('returns empty to and cc arrays when headers are absent', () => {
-		const minimal = 'From: a@b.com\n\nBody'
-		const part = parseMimePart(minimal)
-		const message = extractMessage(part)
-		expect(message.to).toEqual([])
-		expect(message.cc).toEqual([])
-	})
-
-	it('returns undefined date for malformed date header', () => {
-		const bad = 'Date: not-a-date\n\nBody'
-		const part = parseMimePart(bad)
-		const message = extractMessage(part)
-		expect(message.date).toBeUndefined()
-	})
-
-	it('handles multiple CC recipients', () => {
-		const eml = [
-			'From: a@b.com',
-			'To: x@y.com, z@y.com',
-			'Cc: c1@y.com, c2@y.com',
+	it('parses a multipart/mixed message with a base64 attachment', () => {
+		const parser = createEmailParser()
+		const attachmentContent = 'fake-pdf-bytes'
+		const attachmentBase64 = Buffer.from(attachmentContent).toString('base64')
+		const mixedBody = [
+			'--mixed',
+			'Content-Type: text/plain; charset=utf-8',
 			'',
+			'See attached.',
+			'--mixed',
+			'Content-Type: application/pdf; name="report.pdf"',
+			'Content-Disposition: attachment; filename="report.pdf"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			attachmentBase64,
+			'--mixed--',
+		].join('\r\n')
+		const bytes = buildEml(
+			[
+				['From', 'a@b.com'],
+				['To', 'c@d.com'],
+				['Subject', 'Mixed test'],
+				['Content-Type', 'multipart/mixed; boundary="mixed"'],
+			],
+			mixedBody,
+		)
+		const result = parser.parse({ bytes, name: 'mixed.eml' })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		const message = expectDefined(result.value.messages[0])
+		expect(message.attachments).toHaveLength(1)
+		const attachment = expectDefined(message.attachments[0])
+		expect(attachment.name).toBe('report.pdf')
+		expect(Buffer.from(attachment.bytes).toString()).toBe(attachmentContent)
+	})
+
+	it('decodes a quoted-printable body (=C3=A9 → e-acute) under utf-8 charset', () => {
+		const parser = createEmailParser()
+		const bytes = buildEml(
+			[
+				['From', 'a@b.com'],
+				['Content-Type', 'text/plain; charset=utf-8'],
+				['Content-Transfer-Encoding', 'quoted-printable'],
+			],
+			'caf=C3=A9',
+		)
+		const result = parser.parse({ bytes, name: 'qp.eml' })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		const message = expectDefined(result.value.messages[0])
+		expect(message.text).toContain('café')
+	})
+
+	it('decodes an RFC 2047 base64 (B) encoded-word subject', () => {
+		const parser = createEmailParser()
+		const bytes = buildEml(
+			[
+				['From', 'a@b.com'],
+				['Subject', '=?UTF-8?B?SGVsbG8=?='],
+				['Content-Type', 'text/plain; charset=utf-8'],
+			],
 			'Body',
-		].join('\n')
-		const part = parseMimePart(eml)
-		const message = extractMessage(part)
-		expect(message.to).toHaveLength(2)
-		expect(message.cc).toHaveLength(2)
+		)
+		const result = parser.parse({ bytes, name: 'subject-b.eml' })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		expect(expectDefined(result.value.messages[0]).subject).toBe('Hello')
+	})
+
+	it('decodes an RFC 2047 quoted-printable (Q) encoded-word subject', () => {
+		const parser = createEmailParser()
+		const bytes = buildEml(
+			[
+				['From', 'a@b.com'],
+				['Subject', '=?UTF-8?Q?Hello_World?='],
+				['Content-Type', 'text/plain; charset=utf-8'],
+			],
+			'Body',
+		)
+		const result = parser.parse({ bytes, name: 'subject-q.eml' })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		expect(expectDefined(result.value.messages[0]).subject).toBe('Hello World')
 	})
 })
 
-// === extractMessageFromMsg
+// === .msg fixtures
 
-describe('extractMessageFromMsg', () => {
-	it('extracts subject from test.msg', () => {
-		const buffer = loadMsgBuffer('test.msg')
-		const reader = createMsgReader(buffer)
-		const message = extractMessageFromMsg(reader)
-		expect(message.subject.length).toBeGreaterThan(0)
-	})
+describe('EmailParser — .msg fixtures', () => {
+	it.each(MSG_FIXTURES)('parses %s to Success exposing subject/body/attachments', (name) => {
+		const parser = createEmailParser()
+		const result = parser.parse({ bytes: readFixture(name), name })
 
-	it('extracts sender from test.msg', () => {
-		const buffer = loadMsgBuffer('test.msg')
-		const reader = createMsgReader(buffer)
-		const message = extractMessageFromMsg(reader)
-		expect(message.from.length).toBeGreaterThan(0)
-	})
-
-	it('returns string text body', () => {
-		const buffer = loadMsgBuffer('test.msg')
-		const reader = createMsgReader(buffer)
-		const message = extractMessageFromMsg(reader)
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		expect(result.value.format).toBe('msg')
+		const message = expectDefined(result.value.messages[0])
+		expect(typeof message.subject).toBe('string')
 		expect(typeof message.text).toBe('string')
+		expect(Array.isArray(message.attachments)).toBe(true)
 	})
 
-	it('extracts attachments from attachmentFiles.msg', () => {
-		const buffer = loadMsgBuffer('attachmentFiles.msg')
-		const reader = createMsgReader(buffer)
-		const message = extractMessageFromMsg(reader)
+	it('exposes decoded attachments from attachmentFiles.msg', () => {
+		const parser = createEmailParser()
+		const result = parser.parse({
+			bytes: readFixture('attachmentFiles.msg'),
+			name: 'attachmentFiles.msg',
+		})
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		const message = expectDefined(result.value.messages[0])
 		expect(message.attachments.length).toBeGreaterThan(0)
 		for (const attachment of message.attachments) {
 			expect(attachment.name.length).toBeGreaterThan(0)
-			expect(attachment.size).toBeGreaterThan(0)
 			expect(attachment.bytes).toBeInstanceOf(Uint8Array)
 		}
 	})
 
-	it('throws on invalid binary', () => {
-		const garbage = new ArrayBuffer(16)
-		const reader = createMsgReader(garbage)
-		expect(() => extractMessageFromMsg(reader)).toThrow('Unsupported file type')
+	it('parses msgInMsg.msg (exercises the embedded message path) without throwing', () => {
+		const parser = createEmailParser()
+		const result = parser.parse({ bytes: readFixture('msgInMsg.msg'), name: 'msgInMsg.msg' })
+
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) return
+		expect(result.value.format).toBe('msg')
+	})
+
+	it('returns a Failure with a structural MsgError code (never throws) for a truncated .msg', () => {
+		const parser = createEmailParser()
+		const truncated = readFixture('test.msg').slice(0, 700)
+
+		let thrown = false
+		let result
+		try {
+			result = parser.parse({ bytes: truncated, name: 'x.msg' })
+		} catch {
+			thrown = true
+		}
+
+		expect(thrown).toBe(false)
+		expect(isFailure(expectDefined(result))).toBe(true)
+		if (result === undefined || isSuccess(result)) return
+		expect(isMsgError(result.error)).toBe(true)
+		expect(result.error.code).not.toBe('UNSUPPORTED')
 	})
 })
 
-// === EmailParser (integration)
+// === Deep nesting
 
-describe('EmailParser', () => {
-	const parser = createEmailParser()
+describe('EmailParser — MIME nesting depth guard', () => {
+	it('returns a Failure with code CYCLE for MIME nested past the max depth', () => {
+		const parser = createEmailParser()
+		const bytes = buildNestedMultipart(60)
+		const result = parser.parse({ bytes, name: 'deep.eml' })
 
-	it('exposes options', () => {
-		expect(parser.options).toBeDefined()
+		expect(isFailure(result)).toBe(true)
+		if (!isFailure(result)) return
+		expect(isMsgError(result.error)).toBe(true)
+		expect(result.error.code).toBe('CYCLE')
 	})
 
-	it('accepts custom charset option', () => {
-		const custom = createEmailParser({ charset: 'iso-8859-1' })
-		expect(custom.options.charset).toBe('iso-8859-1')
+	it('parses a shallow (depth 3) nested multipart to Success', () => {
+		const parser = createEmailParser()
+		const bytes = buildNestedMultipart(3)
+		const result = parser.parse({ bytes, name: 'shallow.eml' })
+
+		expect(isSuccess(result)).toBe(true)
+	})
+})
+
+// === Options
+
+describe('EmailParser — options', () => {
+	it('returns the default options shape from a parser created with no options', () => {
+		const parser = createEmailParser()
+		expect(parser.options).toEqual({})
 	})
 
-	it('parses a plain .eml file', async () => {
-		const file = makeFile('test.eml', PLAIN_EML)
-		const result = await parser.parse(file)
-		expect(result.success).toBe(true)
-		if (!result.success) return
-		expect(result.value.format).toBe('eml')
-		expect(result.value.messages).toHaveLength(1)
-		expect(result.value.messages[0]?.subject).toBe('Hello')
+	it('exposes a constructor { encoding: "latin1" } option via .options, and still parses an eml', () => {
+		const parser = createEmailParser({ encoding: 'latin1' })
+		expect(parser.options).toEqual({ encoding: 'latin1' })
+
+		const bytes = buildEml(
+			[
+				['From', 'a@b.com'],
+				['Content-Type', 'text/plain; charset=utf-8'],
+			],
+			'Hello',
+		)
+		const result = parser.parse({ bytes, name: 'x.eml' })
+		expect(isSuccess(result)).toBe(true)
 	})
 
-	it('parses a multipart .eml with attachment', async () => {
-		const file = makeFile('multi.eml', MULTIPART_EML)
-		const result = await parser.parse(file)
-		expect(result.success).toBe(true)
-		if (!result.success) return
-		const message = result.value.messages[0]
-		expect(message?.attachments).toHaveLength(1)
-		expect(message?.attachments[0]?.name).toBe('report.pdf')
-	})
-
-	it('returns UnsupportedFormatError for unknown extension', async () => {
-		const file = makeFile('email.xyz', 'content')
-		const result = await parser.parse(file)
-		expect(result.success).toBe(false)
-		if (result.success) return
-		expect(isUnsupportedFormatError(result.error)).toBe(true)
-		expect(isEmailParserError(result.error)).toBe(true)
-	})
-
-	it('detects .eml by message/rfc822 MIME type', async () => {
-		const file = makeFile('noextension', PLAIN_EML, 'message/rfc822')
-		const result = await parser.parse(file)
-		expect(result.success).toBe(true)
-	})
-
-	it('returns ParseError for .msg containing invalid binary', async () => {
-		const file = makeFile('email.msg', 'not-an-ole-file')
-		const result = await parser.parse(file)
-		expect(result.success).toBe(false)
-		if (result.success) return
-		expect(isParseError(result.error)).toBe(true)
-		expect(isUnsupportedFormatError(result.error)).toBe(false)
-	})
-
-	it('returns ParseError for .msg detected by MIME type with invalid binary', async () => {
-		const file = makeFile('noextension', 'garbage', 'application/vnd.ms-outlook')
-		const result = await parser.parse(file)
-		expect(result.success).toBe(false)
-		if (result.success) return
-		expect(isParseError(result.error)).toBe(true)
-	})
-
-	it('parses a real .msg file', async () => {
-		const buffer = readFileSync(join(fixturesDir, 'test.msg'))
-		const file = makeBinaryFile('test.msg', buffer)
-		const result = await parser.parse(file)
-		expect(result.success).toBe(true)
-		if (!result.success) return
-		expect(result.value.format).toBe('msg')
-		expect(result.value.messages).toHaveLength(1)
-		expect(result.value.messages[0]?.subject.length).toBeGreaterThan(0)
-	})
-
-	it('parses .msg with attachments', async () => {
-		const buffer = readFileSync(join(fixturesDir, 'attachmentFiles.msg'))
-		const file = makeBinaryFile('attachmentFiles.msg', buffer)
-		const result = await parser.parse(file)
-		expect(result.success).toBe(true)
-		if (!result.success) return
-		expect(result.value.messages[0]?.attachments.length).toBeGreaterThan(0)
-	})
-
-	it('parses alternative .eml returning both text and html', async () => {
-		const file = makeFile('alt.eml', ALTERNATIVE_EML)
-		const result = await parser.parse(file)
-		expect(result.success).toBe(true)
-		if (!result.success) return
-		const message = result.value.messages[0]
-		expect(message?.text).toContain('Plain text version')
-		expect(message?.html).toContain('<p>HTML version</p>')
+	it('never leaks the internal options reference — each read is an independent copy', () => {
+		const parser = createEmailParser({ encoding: 'latin1' })
+		const first = parser.options
+		const second = parser.options
+		expect(first).not.toBe(second)
+		expect(first).toEqual(second)
 	})
 })

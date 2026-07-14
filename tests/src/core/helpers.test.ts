@@ -1,1149 +1,693 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import {
+	success,
+	failure,
 	isSuccess,
 	isFailure,
 	isRecord,
-	isQueueEntryStatus,
-	isNodeWorkerRequest,
-	isNodeWorkerAbortRequest,
-	isNodeWorkerResponseForId,
+	isMsgFile,
+	removeTrailingNull,
+	readUtf16String,
+	readAnsiString,
+	fileTimeToUtcString,
+	toHexLower,
+	msftUuidStringify,
 	roundUpToMultiple,
 	sectorsNeeded,
 	compareCfbName,
+	decodeBase64,
+	encodeUtf8,
+	decodeUtf8,
+	decodeLatin1,
+	decodeWindows1252,
+	resolveEncoding,
+	isEmailFormat,
+	detectFormat,
+	parseMimeHeaders,
+	parseMimePart,
+	decodeMimeEncoding,
+	decodeMimeText,
+	decodeMimeWords,
+	formatEmailAddress,
+	extractMessage,
 	inferExtension,
-	isBrowserEngine,
-	isBrowserStatus,
-	isBrowserConnection,
-	isBrowserWaitUntil,
-	isPlaywrightPageLike,
-	isPlaywrightContextLike,
-	isPlaywrightBrowserLike,
-	isPlaywrightEngineLike,
-	BROWSER_DEFAULT_CDP_PORT,
-	BROWSER_DEFAULT_TIMEOUT_MS,
-	BROWSER_DEFAULT_VIEWPORT_WIDTH,
-	BROWSER_DEFAULT_VIEWPORT_HEIGHT,
-	BROWSER_CDP_VERSION_PATH,
-	BROWSER_CDP_PROTOCOL,
-} from 'keepalive'
-import type { Result } from 'keepalive'
+	isMsgError,
+} from '@src/core'
+import type { Result } from '@src/core'
+import {
+	asciiBytes,
+	buildEml,
+	buildNestedMultipart,
+	captureError,
+	expectDefined,
+} from '../../setup.js'
 
-describe('helpers', () => {
-	// === isSuccess
+const FIXTURES_DIR = fileURLToPath(new URL('./fixtures/', import.meta.url))
 
-	describe('isSuccess', () => {
-		it('returns true for a Success result', () => {
-			const result: Result<number> = { success: true, value: 42 }
-			expect(isSuccess(result)).toBe(true)
+function readFixture(name: string): DataView {
+	const buffer = readFileSync(`${FIXTURES_DIR}${name}`)
+	return new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+}
+
+// helpers.ts is the root-level exported utility surface for @src/core — pure
+// leaves with no instance state (AGENTS §5). Each exported helper gets its
+// own describe block covering happy path, edge cases, and error paths.
+
+describe('Result helpers', () => {
+	describe('success / failure', () => {
+		it('success wraps a value', () => {
+			expect(success(42)).toEqual({ success: true, value: 42 })
 		})
 
-		it('returns false for a Failure result', () => {
-			const result: Result<number> = { success: false, error: new Error('fail') }
-			expect(isSuccess(result)).toBe(false)
-		})
-
-		it('narrows the type to Success', () => {
-			const result: Result<string, Error> = { success: true, value: 'hello' }
-			expect(isSuccess(result)).toBe(true)
-			// TypeScript narrows after the guard — access value directly
-			if (!isSuccess(result)) throw new Error('unreachable')
-			expect(result.value).toBe('hello')
-		})
-
-		it('works with undefined value', () => {
-			const result: Result<undefined> = { success: true, value: undefined }
-			expect(isSuccess(result)).toBe(true)
-		})
-
-		it('works with null value', () => {
-			const result: Result<null> = { success: true, value: null }
-			expect(isSuccess(result)).toBe(true)
-		})
-
-		it('works with zero value', () => {
-			const result: Result<number> = { success: true, value: 0 }
-			expect(isSuccess(result)).toBe(true)
-		})
-
-		it('works with empty string value', () => {
-			const result: Result<string> = { success: true, value: '' }
-			expect(isSuccess(result)).toBe(true)
-		})
-
-		it('works with false value', () => {
-			const result: Result<boolean> = { success: true, value: false }
-			expect(isSuccess(result)).toBe(true)
-		})
-
-		it('works with complex object value', () => {
-			const result: Result<{ readonly count: number }> = { success: true, value: { count: 5 } }
-			expect(isSuccess(result)).toBe(true)
-		})
-
-		it('works with array value', () => {
-			const result: Result<readonly number[]> = { success: true, value: [1, 2, 3] }
-			expect(isSuccess(result)).toBe(true)
-		})
-
-		it('returns false for custom error type', () => {
-			const result: Result<string, TypeError> = { success: false, error: new TypeError('bad') }
-			expect(isSuccess(result)).toBe(false)
+		it('failure wraps an error', () => {
+			const error = new Error('boom')
+			expect(failure(error)).toEqual({ success: false, error })
 		})
 	})
 
-	// === isFailure
-
-	describe('isFailure', () => {
-		it('returns true for a Failure result', () => {
-			const result: Result<number> = { success: false, error: new Error('fail') }
-			expect(isFailure(result)).toBe(true)
-		})
-
-		it('returns false for a Success result', () => {
-			const result: Result<number> = { success: true, value: 42 }
-			expect(isFailure(result)).toBe(false)
-		})
-
-		it('narrows the type to Failure', () => {
-			const result: Result<string, Error> = { success: false, error: new Error('oops') }
-			expect(isFailure(result)).toBe(true)
-			// TypeScript narrows after the guard — access error directly
-			if (!isFailure(result)) throw new Error('unreachable')
-			expect(result.error.message).toBe('oops')
-		})
-
-		it('works with custom error type', () => {
-			const result: Result<string, TypeError> = { success: false, error: new TypeError('bad') }
-			expect(isFailure(result)).toBe(true)
-		})
-
-		it('works with string error type', () => {
-			const result: Result<number, string> = { success: false, error: 'something went wrong' }
-			expect(isFailure(result)).toBe(true)
-		})
-
-		it('returns false when success is true regardless of value', () => {
-			const result: Result<undefined> = { success: true, value: undefined }
-			expect(isFailure(result)).toBe(false)
-		})
-
-		it('returns false for zero-value success', () => {
-			const result: Result<number> = { success: true, value: 0 }
-			expect(isFailure(result)).toBe(false)
-		})
-
-		it('returns false for empty string success', () => {
-			const result: Result<string> = { success: true, value: '' }
-			expect(isFailure(result)).toBe(false)
-		})
-	})
-
-	// === isSuccess and isFailure are mutually exclusive
-
-	describe('isSuccess and isFailure mutual exclusion', () => {
-		it('exactly one is true for a Success result', () => {
-			const result: Result<number> = { success: true, value: 1 }
+	describe('isSuccess / isFailure', () => {
+		it('narrows a Success result', () => {
+			const result: Result<number> = success(1)
 			expect(isSuccess(result)).toBe(true)
 			expect(isFailure(result)).toBe(false)
+			expect(isSuccess(result) && result.value).toBe(1)
 		})
 
-		it('exactly one is true for a Failure result', () => {
-			const result: Result<number> = { success: false, error: new Error('x') }
+		it('narrows a Failure result', () => {
+			const result: Result<number, string> = failure('nope')
 			expect(isSuccess(result)).toBe(false)
 			expect(isFailure(result)).toBe(true)
-		})
-
-		it('narrows correctly in if/else chain', () => {
-			const result: Result<string> = { success: true, value: 'ok' }
-			expect(isSuccess(result)).toBe(true)
-			expect(isFailure(result)).toBe(false)
-			if (!isSuccess(result)) throw new Error('unreachable')
-			expect(result.value).toBe('ok')
+			expect(isFailure(result) && result.error).toBe('nope')
 		})
 	})
-
-	// === isRecord
 
 	describe('isRecord', () => {
-		it('returns true for plain object', () => {
+		it('accepts a plain object', () => {
 			expect(isRecord({})).toBe(true)
+			expect(isRecord({ a: 1 })).toBe(true)
 		})
 
-		it('returns true for object with properties', () => {
-			expect(isRecord({ key: 'value', count: 1 })).toBe(true)
-		})
-
-		it('returns false for null', () => {
+		it('rejects null', () => {
 			expect(isRecord(null)).toBe(false)
 		})
 
-		it('returns false for undefined', () => {
-			expect(isRecord(undefined)).toBe(false)
-		})
-
-		it('returns false for string', () => {
-			expect(isRecord('hello')).toBe(false)
-		})
-
-		it('returns false for number', () => {
-			expect(isRecord(42)).toBe(false)
-		})
-
-		it('returns false for boolean true', () => {
-			expect(isRecord(true)).toBe(false)
-		})
-
-		it('returns false for boolean false', () => {
-			expect(isRecord(false)).toBe(false)
-		})
-
-		it('returns false for array', () => {
+		it('rejects an array', () => {
 			expect(isRecord([1, 2, 3])).toBe(false)
-		})
-
-		it('returns false for empty array', () => {
 			expect(isRecord([])).toBe(false)
 		})
 
-		it('returns false for bigint', () => {
-			expect(isRecord(BigInt(9007199254740991))).toBe(false)
-		})
-
-		it('returns false for symbol', () => {
-			expect(isRecord(Symbol('test'))).toBe(false)
-		})
-
-		it('returns false for function', () => {
-			expect(isRecord(() => {})).toBe(false)
-		})
-
-		it('returns true for Date instance', () => {
-			// Date is typeof 'object', non-null, non-array
-			expect(isRecord(new Date())).toBe(true)
-		})
-
-		it('returns true for RegExp instance', () => {
-			// RegExp is typeof 'object', non-null, non-array
-			expect(isRecord(/abc/)).toBe(true)
-		})
-
-		it('returns true for Map instance', () => {
-			expect(isRecord(new Map())).toBe(true)
-		})
-
-		it('returns true for Set instance', () => {
-			expect(isRecord(new Set())).toBe(true)
-		})
-
-		it('returns true for Error instance', () => {
-			expect(isRecord(new Error('oops'))).toBe(true)
-		})
-
-		it('returns true for Object.create(null)', () => {
-			expect(isRecord(Object.create(null))).toBe(true)
-		})
-
-		it('returns false for NaN', () => {
-			expect(isRecord(NaN)).toBe(false)
-		})
-
-		it('returns false for Infinity', () => {
-			expect(isRecord(Infinity)).toBe(false)
-		})
-
-		it('returns false for negative Infinity', () => {
-			expect(isRecord(-Infinity)).toBe(false)
-		})
-
-		it('returns false for zero', () => {
-			expect(isRecord(0)).toBe(false)
-		})
-
-		it('returns false for negative zero', () => {
-			expect(isRecord(-0)).toBe(false)
-		})
-
-		it('returns false for empty string', () => {
-			expect(isRecord('')).toBe(false)
-		})
-
-		it('returns true for nested object', () => {
-			expect(isRecord({ a: { b: { c: 1 } } })).toBe(true)
-		})
-
-		it('returns true for object with symbol keys', () => {
-			const sym = Symbol('key')
-			expect(isRecord({ [sym]: 'value' })).toBe(true)
-		})
-
-		it('returns true for frozen object', () => {
-			expect(isRecord(Object.freeze({ x: 1 }))).toBe(true)
-		})
-
-		it('returns true for sealed object', () => {
-			expect(isRecord(Object.seal({ x: 1 }))).toBe(true)
-		})
-
-		it('returns false for array-like typed arrays', () => {
-			// TypedArrays are array-like but not Array.isArray
-			// They are typeof 'object' and non-null, so isRecord returns true
-			expect(isRecord(new Uint8Array(4))).toBe(true)
+		it('rejects primitives', () => {
+			expect(isRecord('text')).toBe(false)
+			expect(isRecord(42)).toBe(false)
+			expect(isRecord(true)).toBe(false)
+			expect(isRecord(undefined)).toBe(false)
 		})
 	})
+})
 
-	// === isQueueEntryStatus
-
-	describe('isQueueEntryStatus', () => {
-		it('returns true for pending', () => {
-			expect(isQueueEntryStatus('pending')).toBe(true)
-		})
-
-		it('returns true for scheduled', () => {
-			expect(isQueueEntryStatus('scheduled')).toBe(true)
-		})
-
-		it('returns true for active', () => {
-			expect(isQueueEntryStatus('active')).toBe(true)
-		})
-
-		it('returns true for completed', () => {
-			expect(isQueueEntryStatus('completed')).toBe(true)
-		})
-
-		it('returns true for failed', () => {
-			expect(isQueueEntryStatus('failed')).toBe(true)
-		})
-
-		it('returns true for aborted', () => {
-			expect(isQueueEntryStatus('aborted')).toBe(true)
-		})
-
-		it('returns true for expired', () => {
-			expect(isQueueEntryStatus('expired')).toBe(true)
-		})
-
-		it('returns false for empty string', () => {
-			expect(isQueueEntryStatus('')).toBe(false)
-		})
-
-		it('returns false for unknown status string', () => {
-			expect(isQueueEntryStatus('running')).toBe(false)
-		})
-
-		it('returns false for status with wrong casing', () => {
-			expect(isQueueEntryStatus('Pending')).toBe(false)
-			expect(isQueueEntryStatus('PENDING')).toBe(false)
-			expect(isQueueEntryStatus('Active')).toBe(false)
-			expect(isQueueEntryStatus('COMPLETED')).toBe(false)
-		})
-
-		it('returns false for status with whitespace', () => {
-			expect(isQueueEntryStatus(' pending')).toBe(false)
-			expect(isQueueEntryStatus('pending ')).toBe(false)
-			expect(isQueueEntryStatus(' pending ')).toBe(false)
-		})
-
-		it('returns false for null', () => {
-			expect(isQueueEntryStatus(null)).toBe(false)
-		})
-
-		it('returns false for undefined', () => {
-			expect(isQueueEntryStatus(undefined)).toBe(false)
-		})
-
-		it('returns false for number', () => {
-			expect(isQueueEntryStatus(0)).toBe(false)
-			expect(isQueueEntryStatus(1)).toBe(false)
-		})
-
-		it('returns false for boolean', () => {
-			expect(isQueueEntryStatus(true)).toBe(false)
-			expect(isQueueEntryStatus(false)).toBe(false)
-		})
-
-		it('returns false for object', () => {
-			expect(isQueueEntryStatus({})).toBe(false)
-			expect(isQueueEntryStatus({ status: 'pending' })).toBe(false)
-		})
-
-		it('returns false for array', () => {
-			expect(isQueueEntryStatus([])).toBe(false)
-			expect(isQueueEntryStatus(['pending'])).toBe(false)
-		})
-
-		it('returns false for symbol', () => {
-			expect(isQueueEntryStatus(Symbol('pending'))).toBe(false)
-		})
-
-		it('returns false for similar but invalid strings', () => {
-			expect(isQueueEntryStatus('queued')).toBe(false)
-			expect(isQueueEntryStatus('cancelled')).toBe(false)
-			expect(isQueueEntryStatus('done')).toBe(false)
-			expect(isQueueEntryStatus('error')).toBe(false)
-			expect(isQueueEntryStatus('timeout')).toBe(false)
-			expect(isQueueEntryStatus('waiting')).toBe(false)
-		})
-
-		it('accepts all seven valid statuses in sequence', () => {
-			const validStatuses = [
-				'pending',
-				'scheduled',
-				'active',
-				'completed',
-				'failed',
-				'aborted',
-				'expired',
-			]
-			for (const status of validStatuses) {
-				expect(isQueueEntryStatus(status)).toBe(true)
-			}
-		})
-
-		it('rejects a batch of invalid values', () => {
-			const invalidValues: unknown[] = [
-				null,
-				undefined,
-				0,
-				1,
-				-1,
-				NaN,
-				Infinity,
-				true,
-				false,
-				'',
-				'x',
-				'Pending',
-				{},
-				[],
-				new Date(),
-				/regex/,
-				Symbol('x'),
-			]
-			for (const value of invalidValues) {
-				expect(isQueueEntryStatus(value)).toBe(false)
-			}
-		})
+describe('decodeBase64', () => {
+	it('decodes a canonical padded vector', () => {
+		expect(Array.from(decodeBase64('aGVsbG8='))).toEqual([104, 101, 108, 108, 111])
 	})
 
-	// === isNodeWorkerRequest
-
-	describe('isNodeWorkerRequest', () => {
-		it('returns true for valid dispatch request', () => {
-			expect(isNodeWorkerRequest({ id: 'nw-1', context: 42 })).toBe(true)
-		})
-
-		it('returns true when context is undefined', () => {
-			expect(isNodeWorkerRequest({ id: 'nw-1', context: undefined })).toBe(true)
-		})
-
-		it('returns false when id is missing', () => {
-			expect(isNodeWorkerRequest({ context: 42 })).toBe(false)
-		})
-
-		it('returns false when context is missing', () => {
-			expect(isNodeWorkerRequest({ id: 'nw-1' })).toBe(false)
-		})
-
-		it('returns false when type field is present', () => {
-			expect(isNodeWorkerRequest({ id: 'nw-1', context: 42, type: 'abort' })).toBe(false)
-		})
-
-		it('returns false for null', () => {
-			expect(isNodeWorkerRequest(null)).toBe(false)
-		})
-
-		it('returns false for string', () => {
-			expect(isNodeWorkerRequest('test')).toBe(false)
-		})
-
-		it('returns false for array', () => {
-			expect(isNodeWorkerRequest([])).toBe(false)
-		})
-
-		it('returns false when id is a number', () => {
-			expect(isNodeWorkerRequest({ id: 1, context: 42 })).toBe(false)
-		})
+	it('tolerates missing padding', () => {
+		expect(Array.from(decodeBase64('aGVsbG8'))).toEqual([104, 101, 108, 108, 111])
 	})
 
-	// === isNodeWorkerAbortRequest
-
-	describe('isNodeWorkerAbortRequest', () => {
-		it('returns true for valid abort request', () => {
-			expect(isNodeWorkerAbortRequest({ id: 'nw-1', type: 'abort' })).toBe(true)
-		})
-
-		it('returns false when type is not abort', () => {
-			expect(isNodeWorkerAbortRequest({ id: 'nw-1', type: 'result' })).toBe(false)
-		})
-
-		it('returns false when id is missing', () => {
-			expect(isNodeWorkerAbortRequest({ type: 'abort' })).toBe(false)
-		})
-
-		it('returns false when type is missing', () => {
-			expect(isNodeWorkerAbortRequest({ id: 'nw-1' })).toBe(false)
-		})
-
-		it('returns false for null', () => {
-			expect(isNodeWorkerAbortRequest(null)).toBe(false)
-		})
-
-		it('returns false for string', () => {
-			expect(isNodeWorkerAbortRequest('abort')).toBe(false)
-		})
-
-		it('returns false when id is a number', () => {
-			expect(isNodeWorkerAbortRequest({ id: 1, type: 'abort' })).toBe(false)
-		})
+	it('ignores embedded whitespace and newlines', () => {
+		expect(Array.from(decodeBase64('aGVs\n bG8=\t'))).toEqual([104, 101, 108, 108, 111])
 	})
 
-	// === isNodeWorkerResponseForId
+	it('throws MsgError MALFORMED on an invalid character', () => {
+		const thrown = captureError(() => decodeBase64('!!!!'))
+		expect(isMsgError(thrown)).toBe(true)
+		expect(isMsgError(thrown) && thrown.code).toBe('MALFORMED')
+	})
+})
 
-	describe('isNodeWorkerResponseForId', () => {
-		it('returns true for matching success response', () => {
-			expect(
-				isNodeWorkerResponseForId({ id: 'nw-1', type: 'result', success: true, value: 42 }, 'nw-1'),
-			).toBe(true)
-		})
-
-		it('returns true for matching failure response', () => {
-			expect(
-				isNodeWorkerResponseForId(
-					{ id: 'nw-2', type: 'result', success: false, error: 'oops' },
-					'nw-2',
-				),
-			).toBe(true)
-		})
-
-		it('returns false when id does not match', () => {
-			expect(
-				isNodeWorkerResponseForId({ id: 'nw-1', type: 'result', success: true, value: 1 }, 'nw-2'),
-			).toBe(false)
-		})
-
-		it('returns false for null', () => {
-			expect(isNodeWorkerResponseForId(null, 'nw-1')).toBe(false)
-		})
-
-		it('returns false for undefined', () => {
-			expect(isNodeWorkerResponseForId(undefined, 'nw-1')).toBe(false)
-		})
-
-		it('returns false for string', () => {
-			expect(isNodeWorkerResponseForId('nw-1', 'nw-1')).toBe(false)
-		})
-
-		it('returns false for number', () => {
-			expect(isNodeWorkerResponseForId(42, 'nw-1')).toBe(false)
-		})
-
-		it('returns false for object without id', () => {
-			expect(isNodeWorkerResponseForId({ type: 'result', success: true, value: 1 }, 'nw-1')).toBe(
-				false,
-			)
-		})
-
-		it('returns false for empty object', () => {
-			expect(isNodeWorkerResponseForId({}, 'nw-1')).toBe(false)
-		})
-
-		it('returns false for array', () => {
-			expect(isNodeWorkerResponseForId([], 'nw-1')).toBe(false)
-		})
-
-		it('returns true when id is empty string and matches', () => {
-			expect(isNodeWorkerResponseForId({ id: '', type: 'result' }, '')).toBe(true)
-		})
-
-		it('returns false when id property is a number', () => {
-			expect(isNodeWorkerResponseForId({ id: 1, type: 'result' }, '1')).toBe(false)
-		})
-
-		it('returns false for progress message with matching id', () => {
-			expect(
-				isNodeWorkerResponseForId({ id: 'nw-1', type: 'progress', progress: {} }, 'nw-1'),
-			).toBe(false)
-		})
-
-		it('returns false for channel message with matching id', () => {
-			expect(
-				isNodeWorkerResponseForId({ id: 'nw-1', type: 'message', value: 'hello' }, 'nw-1'),
-			).toBe(false)
-		})
-
-		it('returns false for object without type field', () => {
-			expect(isNodeWorkerResponseForId({ id: 'nw-1', success: true, value: 42 }, 'nw-1')).toBe(
-				false,
-			)
-		})
+describe('encodeUtf8 / decodeUtf8', () => {
+	it('round-trips ASCII', () => {
+		expect(decodeUtf8(encodeUtf8('Hello'))).toBe('Hello')
 	})
 
-	// === roundUpToMultiple
-
-	describe('roundUpToMultiple', () => {
-		it('returns the value when already aligned', () => {
-			expect(roundUpToMultiple(512, 512)).toBe(512)
-		})
-
-		it('rounds up to the next boundary', () => {
-			expect(roundUpToMultiple(1, 512)).toBe(512)
-			expect(roundUpToMultiple(513, 512)).toBe(1024)
-		})
-
-		it('returns 0 for 0', () => {
-			expect(roundUpToMultiple(0, 512)).toBe(0)
-		})
-
-		it('handles small boundaries', () => {
-			expect(roundUpToMultiple(5, 4)).toBe(8)
-			expect(roundUpToMultiple(4, 4)).toBe(4)
-		})
+	it('round-trips a 2-byte sequence (e-acute)', () => {
+		expect(decodeUtf8(encodeUtf8('é'))).toBe('é')
+		expect(Array.from(encodeUtf8('é'))).toEqual([0xc3, 0xa9])
 	})
 
-	// === sectorsNeeded
-
-	describe('sectorsNeeded', () => {
-		it('returns 0 when bytes is 0', () => {
-			expect(sectorsNeeded(0, 512)).toBe(0)
-		})
-
-		it('returns 0 when bytes is negative', () => {
-			expect(sectorsNeeded(-10, 512)).toBe(0)
-		})
-
-		it('returns 1 for a single byte', () => {
-			expect(sectorsNeeded(1, 512)).toBe(1)
-		})
-
-		it('returns 1 for exactly one sector', () => {
-			expect(sectorsNeeded(512, 512)).toBe(1)
-		})
-
-		it('returns 2 when bytes exceed one sector', () => {
-			expect(sectorsNeeded(513, 512)).toBe(2)
-		})
-
-		it('works with mini-sector size', () => {
-			expect(sectorsNeeded(64, 64)).toBe(1)
-			expect(sectorsNeeded(65, 64)).toBe(2)
-			expect(sectorsNeeded(128, 64)).toBe(2)
-		})
+	it('round-trips a 3-byte sequence (Euro sign)', () => {
+		expect(decodeUtf8(encodeUtf8('€'))).toBe('€')
+		expect(Array.from(encodeUtf8('€'))).toEqual([0xe2, 0x82, 0xac])
 	})
 
-	// === compareCfbName
-
-	describe('compareCfbName', () => {
-		it('returns 0 for identical names', () => {
-			expect(compareCfbName('abc', 'abc')).toBe(0)
-		})
-
-		it('compares by length first', () => {
-			expect(compareCfbName('a', 'ab')).toBeLessThan(0)
-			expect(compareCfbName('abc', 'ab')).toBeGreaterThan(0)
-		})
-
-		it('compares case-insensitively when length matches', () => {
-			expect(compareCfbName('ABC', 'abc')).toBe(0)
-			expect(compareCfbName('abc', 'ABC')).toBe(0)
-		})
-
-		it('orders alphabetically for same-length names', () => {
-			expect(compareCfbName('aaa', 'bbb')).toBeLessThan(0)
-			expect(compareCfbName('bbb', 'aaa')).toBeGreaterThan(0)
-		})
-
-		it('returns 0 for empty strings', () => {
-			expect(compareCfbName('', '')).toBe(0)
-		})
+	it('round-trips a 4-byte sequence (an emoji via surrogate pair)', () => {
+		expect(decodeUtf8(encodeUtf8('😀'))).toBe('😀')
+		expect(Array.from(encodeUtf8('😀'))).toEqual([0xf0, 0x9f, 0x98, 0x80])
 	})
 
-	// === Attachment Helpers
-
-	describe('inferExtension', () => {
-		it('infers from known mime type', () => {
-			expect(inferExtension('image/jpeg')).toBe('.jpg')
-			expect(inferExtension('application/pdf')).toBe('.pdf')
-			expect(inferExtension('text/plain; charset=utf-8')).toBe('.txt')
-		})
-
-		it('infers from filename extension', () => {
-			expect(inferExtension('application/octet-stream', 'document.docx')).toBe('.docx')
-			expect(inferExtension(undefined, 'archive.zip')).toBe('.zip')
-			expect(inferExtension('image/png', 'photo.jpeg')).toBe('.jpeg') // filename wins
-		})
-
-		it('falls back to .bin for unknown mime types and no filename', () => {
-			expect(inferExtension('application/x-custom')).toBe('.bin')
-			expect(inferExtension(undefined, 'no-extension-here')).toBe('.bin')
-			expect(inferExtension()).toBe('.bin')
-		})
-
-		it('normalizes case on filenames', () => {
-			expect(inferExtension(undefined, 'IMAGE.PNG')).toBe('.png')
-		})
+	it('decodeUtf8 never throws on invalid bytes — yields U+FFFD', () => {
+		expect(decodeUtf8(new Uint8Array([0xff]))).toBe('�')
 	})
 
-	// === Browser Constants
-
-	describe('Browser Constants', () => {
-		it('BROWSER_DEFAULT_CDP_PORT is 9222', () => {
-			expect(BROWSER_DEFAULT_CDP_PORT).toBe(9222)
-		})
-
-		it('BROWSER_DEFAULT_TIMEOUT_MS is 30000', () => {
-			expect(BROWSER_DEFAULT_TIMEOUT_MS).toBe(30_000)
-		})
-
-		it('BROWSER_DEFAULT_VIEWPORT_WIDTH is 1280', () => {
-			expect(BROWSER_DEFAULT_VIEWPORT_WIDTH).toBe(1280)
-		})
-
-		it('BROWSER_DEFAULT_VIEWPORT_HEIGHT is 720', () => {
-			expect(BROWSER_DEFAULT_VIEWPORT_HEIGHT).toBe(720)
-		})
-
-		it('BROWSER_CDP_VERSION_PATH is /json/version', () => {
-			expect(BROWSER_CDP_VERSION_PATH).toBe('/json/version')
-		})
-
-		it('BROWSER_CDP_PROTOCOL is http', () => {
-			expect(BROWSER_CDP_PROTOCOL).toBe('http')
-		})
-
-		it('constants have correct types', () => {
-			expect(typeof BROWSER_DEFAULT_CDP_PORT).toBe('number')
-			expect(typeof BROWSER_DEFAULT_TIMEOUT_MS).toBe('number')
-			expect(typeof BROWSER_DEFAULT_VIEWPORT_WIDTH).toBe('number')
-			expect(typeof BROWSER_DEFAULT_VIEWPORT_HEIGHT).toBe('number')
-			expect(typeof BROWSER_CDP_VERSION_PATH).toBe('string')
-			expect(typeof BROWSER_CDP_PROTOCOL).toBe('string')
-		})
-
-		it('viewport constants are positive', () => {
-			expect(BROWSER_DEFAULT_VIEWPORT_WIDTH).toBeGreaterThan(0)
-			expect(BROWSER_DEFAULT_VIEWPORT_HEIGHT).toBeGreaterThan(0)
-		})
-
-		it('timeout constant is positive', () => {
-			expect(BROWSER_DEFAULT_TIMEOUT_MS).toBeGreaterThan(0)
-		})
-
-		it('CDP port is in valid range', () => {
-			expect(BROWSER_DEFAULT_CDP_PORT).toBeGreaterThan(0)
-			expect(BROWSER_DEFAULT_CDP_PORT).toBeLessThanOrEqual(65535)
-		})
+	it('decodeUtf8 never throws on a truncated multibyte sequence', () => {
+		// 0xe2 announces a 3-byte sequence but only one continuation byte follows.
+		expect(decodeUtf8(new Uint8Array([0xe2, 0x82]))).toBe('��')
 	})
 
-	// === isBrowserEngine
-
-	describe('isBrowserEngine', () => {
-		it('accepts chromium', () => {
-			expect(isBrowserEngine('chromium')).toBe(true)
-		})
-
-		it('accepts firefox', () => {
-			expect(isBrowserEngine('firefox')).toBe(true)
-		})
-
-		it('accepts webkit', () => {
-			expect(isBrowserEngine('webkit')).toBe(true)
-		})
-
-		it('rejects edge', () => {
-			expect(isBrowserEngine('edge')).toBe(false)
-		})
-
-		it('rejects chrome', () => {
-			expect(isBrowserEngine('chrome')).toBe(false)
-		})
-
-		it('rejects safari', () => {
-			expect(isBrowserEngine('safari')).toBe(false)
-		})
-
-		it('rejects empty string', () => {
-			expect(isBrowserEngine('')).toBe(false)
-		})
-
-		it('rejects wrong casing', () => {
-			expect(isBrowserEngine('Chromium')).toBe(false)
-			expect(isBrowserEngine('CHROMIUM')).toBe(false)
-			expect(isBrowserEngine('Firefox')).toBe(false)
-			expect(isBrowserEngine('WebKit')).toBe(false)
-		})
-
-		it('rejects non-string types', () => {
-			expect(isBrowserEngine(123)).toBe(false)
-			expect(isBrowserEngine(null)).toBe(false)
-			expect(isBrowserEngine(undefined)).toBe(false)
-			expect(isBrowserEngine(true)).toBe(false)
-			expect(isBrowserEngine({})).toBe(false)
-			expect(isBrowserEngine([])).toBe(false)
-			expect(isBrowserEngine(Symbol('chromium'))).toBe(false)
-		})
+	it('encodeUtf8 encodes a lone (unpaired) surrogate as U+FFFD', () => {
+		expect(Array.from(encodeUtf8('\ud800'))).toEqual([0xef, 0xbf, 0xbd])
 	})
 
-	// === isBrowserStatus
-
-	describe('isBrowserStatus', () => {
-		it('accepts idle', () => {
-			expect(isBrowserStatus('idle')).toBe(true)
-		})
-
-		it('accepts connecting', () => {
-			expect(isBrowserStatus('connecting')).toBe(true)
-		})
-
-		it('accepts connected', () => {
-			expect(isBrowserStatus('connected')).toBe(true)
-		})
-
-		it('accepts disconnected', () => {
-			expect(isBrowserStatus('disconnected')).toBe(true)
-		})
-
-		it('accepts error', () => {
-			expect(isBrowserStatus('error')).toBe(true)
-		})
-
-		it('rejects running', () => {
-			expect(isBrowserStatus('running')).toBe(false)
-		})
-
-		it('rejects pending', () => {
-			expect(isBrowserStatus('pending')).toBe(false)
-		})
-
-		it('rejects empty string', () => {
-			expect(isBrowserStatus('')).toBe(false)
-		})
-
-		it('rejects wrong casing', () => {
-			expect(isBrowserStatus('Idle')).toBe(false)
-			expect(isBrowserStatus('CONNECTED')).toBe(false)
-		})
-
-		it('rejects non-string types', () => {
-			expect(isBrowserStatus(42)).toBe(false)
-			expect(isBrowserStatus(null)).toBe(false)
-			expect(isBrowserStatus(undefined)).toBe(false)
-			expect(isBrowserStatus(true)).toBe(false)
-			expect(isBrowserStatus({})).toBe(false)
-		})
-
-		it('accepts all five valid statuses in sequence', () => {
-			const valid = ['idle', 'connecting', 'connected', 'disconnected', 'error']
-			for (const s of valid) {
-				expect(isBrowserStatus(s)).toBe(true)
-			}
-		})
+	it('decodeUtf8 rejects an overlong 2-byte encoding of NUL as U+FFFD', () => {
+		expect(decodeUtf8(new Uint8Array([0xc0, 0x80]))).toBe('�')
 	})
 
-	// === isBrowserConnection
-
-	describe('isBrowserConnection', () => {
-		it('accepts cdp', () => {
-			expect(isBrowserConnection('cdp')).toBe(true)
-		})
-
-		it('accepts launch', () => {
-			expect(isBrowserConnection('launch')).toBe(true)
-		})
-
-		it('accepts persistent', () => {
-			expect(isBrowserConnection('persistent')).toBe(true)
-		})
-
-		it('rejects websocket', () => {
-			expect(isBrowserConnection('websocket')).toBe(false)
-		})
-
-		it('rejects direct', () => {
-			expect(isBrowserConnection('direct')).toBe(false)
-		})
-
-		it('rejects empty string', () => {
-			expect(isBrowserConnection('')).toBe(false)
-		})
-
-		it('rejects non-string types', () => {
-			expect(isBrowserConnection(null)).toBe(false)
-			expect(isBrowserConnection(undefined)).toBe(false)
-			expect(isBrowserConnection(0)).toBe(false)
-			expect(isBrowserConnection(true)).toBe(false)
-			expect(isBrowserConnection({})).toBe(false)
-		})
-
-		it('rejects wrong casing', () => {
-			expect(isBrowserConnection('CDP')).toBe(false)
-			expect(isBrowserConnection('Launch')).toBe(false)
-			expect(isBrowserConnection('Persistent')).toBe(false)
-		})
+	it('decodeUtf8 rejects an overlong 2-byte encoding of "<" (never decodes to it)', () => {
+		expect(decodeUtf8(new Uint8Array([0xc0, 0xbc]))).not.toContain('<')
+		expect(decodeUtf8(new Uint8Array([0xc0, 0xbc]))).toBe('�')
 	})
 
-	// === isBrowserWaitUntil
-
-	describe('isBrowserWaitUntil', () => {
-		it('accepts load', () => {
-			expect(isBrowserWaitUntil('load')).toBe(true)
-		})
-
-		it('accepts domcontentloaded', () => {
-			expect(isBrowserWaitUntil('domcontentloaded')).toBe(true)
-		})
-
-		it('accepts networkidle', () => {
-			expect(isBrowserWaitUntil('networkidle')).toBe(true)
-		})
-
-		it('accepts commit', () => {
-			expect(isBrowserWaitUntil('commit')).toBe(true)
-		})
-
-		it('rejects ready', () => {
-			expect(isBrowserWaitUntil('ready')).toBe(false)
-		})
-
-		it('rejects complete', () => {
-			expect(isBrowserWaitUntil('complete')).toBe(false)
-		})
-
-		it('rejects empty string', () => {
-			expect(isBrowserWaitUntil('')).toBe(false)
-		})
-
-		it('rejects wrong casing', () => {
-			expect(isBrowserWaitUntil('Load')).toBe(false)
-			expect(isBrowserWaitUntil('DOMContentLoaded')).toBe(false)
-			expect(isBrowserWaitUntil('NetworkIdle')).toBe(false)
-		})
-
-		it('rejects non-string types', () => {
-			expect(isBrowserWaitUntil(null)).toBe(false)
-			expect(isBrowserWaitUntil(undefined)).toBe(false)
-			expect(isBrowserWaitUntil(42)).toBe(false)
-			expect(isBrowserWaitUntil(true)).toBe(false)
-		})
+	it('decodeUtf8 rejects a surrogate code point as U+FFFD', () => {
+		expect(decodeUtf8(new Uint8Array([0xed, 0xa0, 0x80]))).toBe('�')
 	})
 
-	// === isPlaywrightPageLike
-
-	describe('isPlaywrightPageLike', () => {
-		it('rejects null', () => {
-			expect(isPlaywrightPageLike(null)).toBe(false)
-		})
-
-		it('rejects undefined', () => {
-			expect(isPlaywrightPageLike(undefined)).toBe(false)
-		})
-
-		it('rejects non-objects', () => {
-			expect(isPlaywrightPageLike('string')).toBe(false)
-			expect(isPlaywrightPageLike(42)).toBe(false)
-			expect(isPlaywrightPageLike(true)).toBe(false)
-		})
-
-		it('rejects empty object', () => {
-			expect(isPlaywrightPageLike({})).toBe(false)
-		})
-
-		it('rejects incomplete objects', () => {
-			expect(isPlaywrightPageLike({ url: () => '' })).toBe(false)
-		})
-
-		it('rejects object with only url and title', () => {
-			expect(isPlaywrightPageLike({ url: () => '', title: async () => '' })).toBe(false)
-		})
-
-		it('rejects object with non-function properties', () => {
-			expect(
-				isPlaywrightPageLike({
-					url: 'not-fn',
-					title: 'not-fn',
-					goto: 'not-fn',
-					content: 'not-fn',
-					evaluate: 'not-fn',
-					click: 'not-fn',
-					fill: 'not-fn',
-					selectOption: 'not-fn',
-					waitForSelector: 'not-fn',
-				}),
-			).toBe(false)
-		})
-
-		it('accepts minimal valid page-like object', () => {
-			const pageLike = {
-				url: () => '',
-				title: async () => '',
-				goto: async () => null,
-				content: async () => '',
-				evaluate: async () => null,
-				click: async () => {},
-				fill: async () => {},
-				selectOption: async () => [],
-				waitForSelector: async () => null,
-			}
-			expect(isPlaywrightPageLike(pageLike)).toBe(true)
-		})
-
-		it('accepts page-like with optional methods', () => {
-			const pageLike = {
-				url: () => '',
-				title: async () => '',
-				goto: async () => null,
-				content: async () => '',
-				evaluate: async () => null,
-				click: async () => {},
-				fill: async () => {},
-				selectOption: async () => [],
-				waitForSelector: async () => null,
-				screenshot: async () => Buffer.from([]),
-				frame: () => null,
-				close: async () => {},
-				isClosed: () => false,
-			}
-			expect(isPlaywrightPageLike(pageLike)).toBe(true)
-		})
-
-		it('rejects array', () => {
-			expect(isPlaywrightPageLike([])).toBe(false)
-		})
+	it('decodeUtf8 rejects an out-of-range code point (> U+10FFFF) as U+FFFD', () => {
+		expect(decodeUtf8(new Uint8Array([0xf7, 0xbf, 0xbf, 0xbf]))).toBe('�')
 	})
 
-	// === isPlaywrightContextLike
+	it('decodeUtf8 still round-trips a valid mixed ASCII/multibyte string', () => {
+		const text = 'Hello café €100 😀'
+		expect(decodeUtf8(encodeUtf8(text))).toBe(text)
+	})
+})
 
-	describe('isPlaywrightContextLike', () => {
-		it('rejects null', () => {
-			expect(isPlaywrightContextLike(null)).toBe(false)
-		})
+describe('decodeLatin1', () => {
+	it('maps bytes 0x41 / 0xE9 / 0xFF to their code points', () => {
+		expect(decodeLatin1(new Uint8Array([0x41]))).toBe('A')
+		expect(decodeLatin1(new Uint8Array([0xe9]))).toBe('é')
+		expect(decodeLatin1(new Uint8Array([0xff]))).toBe('ÿ')
+	})
+})
 
-		it('rejects undefined', () => {
-			expect(isPlaywrightContextLike(undefined)).toBe(false)
-		})
-
-		it('rejects empty object', () => {
-			expect(isPlaywrightContextLike({})).toBe(false)
-		})
-
-		it('rejects incomplete objects', () => {
-			expect(isPlaywrightContextLike({ newPage: () => {} })).toBe(false)
-			expect(isPlaywrightContextLike({ newPage: () => {}, pages: () => [] })).toBe(false)
-		})
-
-		it('accepts minimal valid context-like object', () => {
-			const ctxLike = {
-				newPage: async () => ({}),
-				pages: () => [],
-				close: async () => {},
-			}
-			expect(isPlaywrightContextLike(ctxLike)).toBe(true)
-		})
-
-		it('rejects non-function properties', () => {
-			expect(
-				isPlaywrightContextLike({
-					newPage: 'not-fn',
-					pages: 'not-fn',
-					close: 'not-fn',
-				}),
-			).toBe(false)
-		})
-
-		it('rejects non-objects', () => {
-			expect(isPlaywrightContextLike('string')).toBe(false)
-			expect(isPlaywrightContextLike(42)).toBe(false)
-		})
+describe('decodeWindows1252', () => {
+	it('maps 0x80 to the Euro sign', () => {
+		expect(decodeWindows1252(new Uint8Array([0x80]))).toBe('€')
 	})
 
-	// === isPlaywrightBrowserLike
-
-	describe('isPlaywrightBrowserLike', () => {
-		it('rejects null', () => {
-			expect(isPlaywrightBrowserLike(null)).toBe(false)
-		})
-
-		it('rejects undefined', () => {
-			expect(isPlaywrightBrowserLike(undefined)).toBe(false)
-		})
-
-		it('rejects empty object', () => {
-			expect(isPlaywrightBrowserLike({})).toBe(false)
-		})
-
-		it('rejects incomplete objects', () => {
-			expect(isPlaywrightBrowserLike({ close: () => {} })).toBe(false)
-			expect(isPlaywrightBrowserLike({ newContext: () => {}, close: () => {} })).toBe(false)
-		})
-
-		it('accepts minimal valid browser-like object', () => {
-			const browserLike = {
-				newContext: async () => ({}),
-				contexts: () => [],
-				close: async () => {},
-				isConnected: () => true,
-			}
-			expect(isPlaywrightBrowserLike(browserLike)).toBe(true)
-		})
-
-		it('rejects non-function properties', () => {
-			expect(
-				isPlaywrightBrowserLike({
-					newContext: 'not-fn',
-					contexts: 'not-fn',
-					close: 'not-fn',
-					isConnected: 'not-fn',
-				}),
-			).toBe(false)
-		})
-
-		it('rejects non-objects', () => {
-			expect(isPlaywrightBrowserLike('string')).toBe(false)
-			expect(isPlaywrightBrowserLike(42)).toBe(false)
-		})
+	it('maps 0x9C to the oe-ligature', () => {
+		expect(decodeWindows1252(new Uint8Array([0x9c]))).toBe('œ')
 	})
 
-	// === isPlaywrightEngineLike
+	it('leaves plain ASCII unchanged', () => {
+		expect(decodeWindows1252(new Uint8Array([0x41, 0x42]))).toBe('AB')
+	})
+})
 
-	describe('isPlaywrightEngineLike', () => {
-		it('rejects null', () => {
-			expect(isPlaywrightEngineLike(null)).toBe(false)
-		})
+describe('resolveEncoding', () => {
+	it('resolves the full label matrix', () => {
+		expect(resolveEncoding('utf-8')).toBe('utf-8')
+		expect(resolveEncoding('UTF8')).toBe('utf-8')
+		expect(resolveEncoding('utf-16')).toBe('utf-16le')
+		expect(resolveEncoding('utf-16le')).toBe('utf-16le')
+		expect(resolveEncoding('windows-1252')).toBe('windows-1252')
+		expect(resolveEncoding('cp1252')).toBe('windows-1252')
+		expect(resolveEncoding('us-ascii')).toBe('latin1')
+		expect(resolveEncoding('ascii')).toBe('latin1')
+		expect(resolveEncoding('iso-8859-1')).toBe('latin1')
+		expect(resolveEncoding('latin1')).toBe('latin1')
+	})
 
-		it('rejects undefined', () => {
-			expect(isPlaywrightEngineLike(undefined)).toBe(false)
-		})
+	it('trims and lowercases the label', () => {
+		expect(resolveEncoding(' UTF-8 ')).toBe('utf-8')
+	})
 
-		it('rejects empty object', () => {
-			expect(isPlaywrightEngineLike({})).toBe(false)
-		})
+	it('falls back to utf-8 for an unknown label', () => {
+		expect(resolveEncoding('shift-jis')).toBe('utf-8')
+	})
 
-		it('rejects incomplete objects', () => {
-			expect(isPlaywrightEngineLike({ launch: () => {} })).toBe(false)
-			expect(isPlaywrightEngineLike({ launch: () => {}, connectOverCDP: () => {} })).toBe(false)
-		})
+	it('falls back to utf-8 when undefined', () => {
+		expect(resolveEncoding(undefined)).toBe('utf-8')
+	})
+})
 
-		it('accepts minimal valid engine-like object', () => {
-			const engineLike = {
-				connectOverCDP: async () => ({}),
-				launch: async () => ({}),
-				launchPersistentContext: async () => ({}),
-			}
-			expect(isPlaywrightEngineLike(engineLike)).toBe(true)
-		})
+describe('readUtf16String', () => {
+	it('reads a known UTF-16LE vector', () => {
+		const bytes = new Uint8Array([0x48, 0x00, 0x69, 0x00]) // 'Hi'
+		const view = new DataView(bytes.buffer)
+		expect(readUtf16String(view, 0, 2)).toBe('Hi')
+	})
 
-		it('rejects non-function properties', () => {
-			expect(
-				isPlaywrightEngineLike({
-					connectOverCDP: 'not-fn',
-					launch: 'not-fn',
-					launchPersistentContext: 'not-fn',
-				}),
-			).toBe(false)
-		})
+	it('reads starting at a non-zero offset', () => {
+		const bytes = new Uint8Array([0xff, 0xff, 0x41, 0x00, 0x42, 0x00])
+		const view = new DataView(bytes.buffer)
+		expect(readUtf16String(view, 2, 2)).toBe('AB')
+	})
 
-		it('rejects non-objects', () => {
-			expect(isPlaywrightEngineLike('string')).toBe(false)
-			expect(isPlaywrightEngineLike(42)).toBe(false)
-		})
+	it('throws MsgError MALFORMED when the requested range exceeds the view bounds', () => {
+		const bytes = new Uint8Array([0x41, 0x00])
+		const view = new DataView(bytes.buffer)
+		const thrown = captureError(() => readUtf16String(view, 0, 1000))
+		expect(isMsgError(thrown)).toBe(true)
+		expect(isMsgError(thrown) && thrown.code).toBe('MALFORMED')
+	})
+})
+
+describe('readAnsiString', () => {
+	it('decodes utf-16le', () => {
+		const bytes = new Uint8Array([0x48, 0x00, 0x69, 0x00]) // 'Hi'
+		expect(readAnsiString(bytes, 'utf-16le')).toBe('Hi')
+	})
+
+	it('decodes utf-8', () => {
+		expect(readAnsiString(encodeUtf8('café'), 'utf-8')).toBe('café')
+	})
+
+	it('decodes latin1', () => {
+		expect(readAnsiString(new Uint8Array([0x41, 0xe9]), 'latin1')).toBe('Aé')
+	})
+
+	it('decodes windows-1252 (default when encoding is omitted)', () => {
+		expect(readAnsiString(new Uint8Array([0x80]))).toBe('€')
+		expect(readAnsiString(new Uint8Array([0x80]), 'windows-1252')).toBe('€')
+	})
+})
+
+describe('removeTrailingNull', () => {
+	it('removes a trailing null and everything after it', () => {
+		expect(removeTrailingNull('hello\0world')).toBe('hello')
+	})
+
+	it('returns the string unchanged when there is no null', () => {
+		expect(removeTrailingNull('hello')).toBe('hello')
+	})
+
+	it('returns an empty string when the first character is null', () => {
+		expect(removeTrailingNull('\0hello')).toBe('')
+	})
+})
+
+describe('toHexLower', () => {
+	it('pads a small value to a fixed length', () => {
+		expect(toHexLower(255, 2)).toBe('ff')
+		expect(toHexLower(0, 4)).toBe('0000')
+	})
+
+	it('truncates to the low bits when the value exceeds the padded width', () => {
+		expect(toHexLower(0x1ff, 2)).toBe('ff')
+	})
+})
+
+describe('msftUuidStringify', () => {
+	it('stringifies a mixed-endian UUID from a known byte vector', () => {
+		const data = new Uint8Array([
+			0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+			0x10,
+		])
+		expect(msftUuidStringify(data, 0)).toBe('04030201-0605-0807-090a-0b0c0d0e0f10')
+	})
+
+	it('reads starting at a non-zero offset', () => {
+		const data = new Uint8Array([
+			0xff, 0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+			0x0e, 0x0f, 0x10,
+		])
+		expect(msftUuidStringify(data, 2)).toBe('04030201-0605-0807-090a-0b0c0d0e0f10')
+	})
+})
+
+describe('fileTimeToUtcString', () => {
+	it('converts the FILETIME epoch (116444736000000000) to the Unix epoch string', () => {
+		expect(fileTimeToUtcString(3577643008, 27111902)).toBe(new Date(0).toUTCString())
+	})
+
+	it('converts a modern FILETIME vector computed with BigInt (no float drift)', () => {
+		// 2024-03-15T12:34:56.000Z, derived in-test via BigInt so it can never drift
+		// from the implementation's own arithmetic.
+		const epoch = 116444736000000000n
+		const targetMs = Date.UTC(2024, 2, 15, 12, 34, 56, 0)
+		const fileTime = BigInt(targetMs) * 10000n + epoch
+		const low = Number(fileTime & 0xffffffffn)
+		const high = Number(fileTime >> 32n)
+		expect(fileTimeToUtcString(low, high)).toBe(new Date(targetMs).toUTCString())
+	})
+})
+
+describe('roundUpToMultiple', () => {
+	it('returns 0 for 0', () => {
+		expect(roundUpToMultiple(0, 512)).toBe(0)
+	})
+
+	it('returns the value unchanged when already an exact multiple', () => {
+		expect(roundUpToMultiple(512, 512)).toBe(512)
+		expect(roundUpToMultiple(1024, 512)).toBe(1024)
+	})
+
+	it('rounds a multiple+1 up to the next boundary', () => {
+		expect(roundUpToMultiple(513, 512)).toBe(1024)
+	})
+})
+
+describe('sectorsNeeded', () => {
+	it('returns 0 for 0 bytes', () => {
+		expect(sectorsNeeded(0, 512)).toBe(0)
+	})
+
+	it('returns exactly 1 for exactly one sector', () => {
+		expect(sectorsNeeded(512, 512)).toBe(1)
+	})
+
+	it('returns 2 for one sector + 1 byte', () => {
+		expect(sectorsNeeded(513, 512)).toBe(2)
+	})
+})
+
+describe('compareCfbName', () => {
+	it('orders the shorter name first', () => {
+		expect(compareCfbName('a', 'ab')).toBeLessThan(0)
+		expect(compareCfbName('ab', 'a')).toBeGreaterThan(0)
+	})
+
+	it('orders case-insensitively when lengths match', () => {
+		expect(compareCfbName('ABC', 'abc')).toBe(0)
+		expect(compareCfbName('abc', 'abd')).toBeLessThan(0)
+		expect(compareCfbName('ABD', 'abc')).toBeGreaterThan(0)
+	})
+})
+
+describe('isMsgFile', () => {
+	it('returns true for a real CFB fixture', () => {
+		expect(isMsgFile(readFixture('test.msg'))).toBe(true)
+	})
+
+	it('returns false for arbitrary ascii bytes', () => {
+		const bytes = asciiBytes('not a compound file at all')
+		expect(isMsgFile(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength))).toBe(false)
+	})
+
+	it('returns false for an empty buffer', () => {
+		const bytes = new Uint8Array(0)
+		expect(isMsgFile(new DataView(bytes.buffer))).toBe(false)
+	})
+})
+
+describe('isEmailFormat', () => {
+	it('accepts eml and msg', () => {
+		expect(isEmailFormat('eml')).toBe(true)
+		expect(isEmailFormat('msg')).toBe(true)
+	})
+
+	it('rejects any other value', () => {
+		expect(isEmailFormat('pdf')).toBe(false)
+		expect(isEmailFormat(undefined)).toBe(false)
+		expect(isEmailFormat(null)).toBe(false)
+		expect(isEmailFormat(42)).toBe(false)
+	})
+})
+
+describe('detectFormat', () => {
+	it('detects eml from a .eml filename', () => {
+		expect(detectFormat('message.eml', undefined)).toBe('eml')
+		expect(detectFormat('MESSAGE.EML', undefined)).toBe('eml')
+	})
+
+	it('detects msg from a .msg filename', () => {
+		expect(detectFormat('message.msg', undefined)).toBe('msg')
+	})
+
+	it('detects eml from a message/rfc822 mime type', () => {
+		expect(detectFormat(undefined, 'message/rfc822')).toBe('eml')
+	})
+
+	it('detects msg from an application/vnd.ms-outlook mime type', () => {
+		expect(detectFormat(undefined, 'application/vnd.ms-outlook')).toBe('msg')
+	})
+
+	it('prefers the filename extension over the mime type', () => {
+		expect(detectFormat('message.eml', 'application/vnd.ms-outlook')).toBe('eml')
+	})
+
+	it('returns undefined when neither hint resolves', () => {
+		expect(detectFormat(undefined, undefined)).toBeUndefined()
+		expect(detectFormat('message.txt', 'text/plain')).toBeUndefined()
+	})
+})
+
+describe('inferExtension', () => {
+	it('infers from a known mime type', () => {
+		expect(inferExtension('image/jpeg')).toBe('.jpg')
+	})
+
+	it('infers from a filename extension', () => {
+		expect(inferExtension(undefined, 'archive.zip')).toBe('.zip')
+	})
+
+	it('prefers the filename over the mime type', () => {
+		expect(inferExtension('image/png', 'photo.jpeg')).toBe('.jpeg')
+	})
+
+	it('falls back to .bin when neither hint resolves', () => {
+		expect(inferExtension()).toBe('.bin')
+		expect(inferExtension('application/x-custom')).toBe('.bin')
+		expect(inferExtension(undefined, 'no-extension-here')).toBe('.bin')
+	})
+})
+
+describe('parseMimeHeaders', () => {
+	it('parses multiple headers case-insensitively', () => {
+		const headers = parseMimeHeaders('Subject: Hello\r\nFROM: alice@example.com\r\n')
+		expect(headers.get('subject')?.value).toBe('Hello')
+		expect(headers.get('from')?.value).toBe('alice@example.com')
+	})
+
+	it('joins a folded continuation line onto the previous header', () => {
+		const headers = parseMimeHeaders('Subject: Hello\r\n World\r\n')
+		expect(headers.get('subject')?.value).toBe('Hello World')
+	})
+
+	it('joins a tab-indented continuation line', () => {
+		const headers = parseMimeHeaders('Subject: Hello\r\n\tWorld\r\n')
+		expect(headers.get('subject')?.value).toBe('Hello World')
+	})
+
+	it('parses content-type parameters', () => {
+		const headers = parseMimeHeaders('Content-Type: text/plain; charset="utf-8"\r\n')
+		const header = expectDefined(headers.get('content-type'))
+		expect(header.value).toBe('text/plain')
+		expect(header.params.get('charset')).toBe('utf-8')
+	})
+
+	it('keeps only the first occurrence of a repeated header', () => {
+		const headers = parseMimeHeaders('X-Test: first\r\nX-Test: second\r\n')
+		expect(headers.get('x-test')?.value).toBe('first')
+	})
+})
+
+describe('parseMimePart', () => {
+	it('parses a small multipart message into its child parts', () => {
+		const raw = decodeUtf8(
+			buildEml(
+				[['Content-Type', 'multipart/mixed; boundary="XYZ"']],
+				'--XYZ\r\nContent-Type: text/plain\r\n\r\nHello\r\n--XYZ\r\nContent-Type: text/html\r\n\r\n<p>Hi</p>\r\n--XYZ--',
+			),
+		)
+
+		const part = parseMimePart(raw)
+
+		expect(part.parts).toHaveLength(2)
+		expect(part.parts[0]?.headers.get('content-type')?.value).toBe('text/plain')
+		expect(part.parts[0]?.body).toBe('Hello')
+		expect(part.parts[1]?.headers.get('content-type')?.value).toBe('text/html')
+		expect(part.parts[1]?.body).toBe('<p>Hi</p>')
+	})
+
+	it('parses a non-multipart message with an empty parts list', () => {
+		const raw = decodeUtf8(buildEml([['Content-Type', 'text/plain']], 'just text'))
+		const part = parseMimePart(raw)
+		expect(part.parts).toEqual([])
+		expect(part.body).toBe('just text')
+	})
+
+	it('throws MsgError CYCLE once nesting exceeds the maximum depth', () => {
+		const raw = decodeUtf8(buildNestedMultipart(60))
+
+		const thrown = captureError(() => parseMimePart(raw))
+
+		expect(isMsgError(thrown)).toBe(true)
+		expect(isMsgError(thrown) && thrown.code).toBe('CYCLE')
+	})
+})
+
+describe('decodeMimeEncoding', () => {
+	it('decodes a base64 body', () => {
+		expect(Array.from(decodeMimeEncoding('aGVsbG8=', 'base64'))).toEqual([104, 101, 108, 108, 111])
+	})
+
+	it('decodes a quoted-printable body with an escaped byte', () => {
+		const decoded = decodeMimeEncoding('Caf=C3=A9', 'quoted-printable')
+		expect(decodeUtf8(decoded)).toBe('Café')
+	})
+
+	it('unwraps a quoted-printable soft line break (=CRLF)', () => {
+		const decoded = decodeMimeEncoding('Hello=\r\nWorld', 'quoted-printable')
+		expect(decodeUtf8(decoded)).toBe('HelloWorld')
+	})
+
+	it('treats an unknown encoding as raw text (utf-8 encoded)', () => {
+		expect(Array.from(decodeMimeEncoding('hi', 'unknown-encoding'))).toEqual(
+			Array.from(encodeUtf8('hi')),
+		)
+	})
+
+	it('preserves a literal "=" when followed by a non-hex nibble (=3G is not consumed as 3)', () => {
+		const decoded = decodeMimeEncoding('A=3GB', 'quoted-printable')
+		expect(decodeUtf8(decoded)).toBe('A=3GB')
+	})
+
+	it('still decodes a valid escaped byte (=41 -> A)', () => {
+		const decoded = decodeMimeEncoding('=41', 'quoted-printable')
+		expect(decodeUtf8(decoded)).toBe('A')
+	})
+})
+
+describe('decodeMimeText', () => {
+	it('decodes a base64 body with the utf-8 charset', () => {
+		const body = Buffer.from(encodeUtf8('café')).toString('base64')
+		expect(decodeMimeText(body, 'base64', 'utf-8')).toBe('café')
+	})
+
+	it('decodes a base64 body with the iso-8859-1 charset', () => {
+		expect(decodeMimeText('Y2Fm6Q==', 'base64', 'iso-8859-1')).toBe('café')
+	})
+
+	it('returns 7bit/8bit bodies unchanged', () => {
+		expect(decodeMimeText('plain text', '7bit', 'utf-8')).toBe('plain text')
+	})
+})
+
+describe('decodeMimeWords', () => {
+	it('decodes a Base64 (B) encoded word', () => {
+		expect(decodeMimeWords('=?UTF-8?B?SGVsbG8=?=')).toBe('Hello')
+	})
+
+	it('decodes a Quoted-Printable (Q) encoded word', () => {
+		expect(decodeMimeWords('=?UTF-8?Q?Hello_World?=')).toBe('Hello World')
+	})
+
+	it('decodes a Quoted-Printable (Q) encoded word with an escaped byte', () => {
+		expect(decodeMimeWords('=?UTF-8?Q?Caf=C3=A9?=')).toBe('Café')
+	})
+
+	it('decodes adjacent encoded words, dropping the whitespace between them (RFC 2047 6.2)', () => {
+		expect(decodeMimeWords('=?UTF-8?B?SGVsbG8=?= =?UTF-8?B?IFdvcmxk?=')).toBe('Hello World')
+	})
+
+	it('leaves mixed plain text around an encoded word untouched', () => {
+		expect(decodeMimeWords('plain =?UTF-8?B?SGVsbG8=?= more')).toBe('plain Hello more')
+	})
+
+	it('returns the input unchanged when there are no encoded words', () => {
+		expect(decodeMimeWords('just plain text')).toBe('just plain text')
+	})
+
+	it('drops whitespace between two adjacent encoded words with identical content', () => {
+		expect(decodeMimeWords('=?UTF-8?B?4pyT?= =?UTF-8?B?4pyT?=')).toBe('✓✓')
+	})
+
+	it('keeps surrounding spaces for a lone encoded word amid plain text', () => {
+		expect(decodeMimeWords('plain =?UTF-8?B?4pyT?= plain')).toBe('plain ✓ plain')
+	})
+})
+
+describe('formatEmailAddress', () => {
+	it('formats a name and address together', () => {
+		expect(formatEmailAddress('Alice', 'alice@example.com')).toBe('Alice <alice@example.com>')
+	})
+
+	it('formats an address alone when no name is given', () => {
+		expect(formatEmailAddress(undefined, 'alice@example.com')).toBe('alice@example.com')
+	})
+
+	it('formats a name alone when no address is given', () => {
+		expect(formatEmailAddress('Alice', undefined)).toBe('Alice')
+	})
+
+	it('returns an empty string when neither is given', () => {
+		expect(formatEmailAddress(undefined, undefined)).toBe('')
+	})
+})
+
+describe('extractMessage', () => {
+	it('extracts from/to/cc/subject/date/text and a disposition attachment', () => {
+		const raw = decodeUtf8(
+			buildEml(
+				[
+					['From', 'Alice <alice@example.com>'],
+					['To', 'bob@example.com, carol@example.com'],
+					['Cc', 'dave@example.com'],
+					['Subject', 'Hello'],
+					['Date', 'Fri, 15 Mar 2024 12:34:56 GMT'],
+					['Content-Type', 'multipart/mixed; boundary="AAA"'],
+				],
+				'--AAA\r\n' +
+					'Content-Type: text/plain\r\n\r\n' +
+					'Body text\r\n' +
+					'--AAA\r\n' +
+					'Content-Type: text/plain\r\n' +
+					'Content-Disposition: attachment; filename="file.txt"\r\n\r\n' +
+					'attachment content\r\n' +
+					'--AAA--',
+			),
+		)
+
+		const part = parseMimePart(raw)
+		const message = extractMessage(part)
+
+		expect(message.from).toBe('Alice <alice@example.com>')
+		expect(message.to).toEqual(['bob@example.com', 'carol@example.com'])
+		expect(message.cc).toEqual(['dave@example.com'])
+		expect(message.subject).toBe('Hello')
+		expect(message.date?.toUTCString()).toBe('Fri, 15 Mar 2024 12:34:56 GMT')
+		expect(message.text).toBe('Body text')
+		expect(message.html).toBe('')
+		expect(message.attachments).toHaveLength(1)
+		const [attachment] = message.attachments
+		expect(attachment?.name).toBe('file.txt')
+		expect(attachment?.mimeType).toBe('text/plain')
+		expect(decodeUtf8(expectDefined(attachment).bytes)).toBe('attachment content')
+	})
+
+	it('leaves date undefined when the Date header is absent', () => {
+		const raw = decodeUtf8(buildEml([['Content-Type', 'text/plain']], 'no date here'))
+		const message = extractMessage(parseMimePart(raw))
+		expect(message.date).toBeUndefined()
+	})
+
+	it('leaves date undefined when the Date header is malformed', () => {
+		const raw = decodeUtf8(
+			buildEml(
+				[
+					['Date', 'not a real date'],
+					['Content-Type', 'text/plain'],
+				],
+				'body',
+			),
+		)
+		const message = extractMessage(parseMimePart(raw))
+		expect(message.date).toBeUndefined()
+	})
+
+	it('collects an html part separately from a text part', () => {
+		const raw = decodeUtf8(
+			buildEml(
+				[['Content-Type', 'multipart/mixed; boundary="BBB"']],
+				'--BBB\r\nContent-Type: text/plain\r\n\r\nplain body\r\n' +
+					'--BBB\r\nContent-Type: text/html\r\n\r\n<p>html body</p>\r\n--BBB--',
+			),
+		)
+		const message = extractMessage(parseMimePart(raw))
+		expect(message.text).toBe('plain body')
+		expect(message.html).toBe('<p>html body</p>')
 	})
 })

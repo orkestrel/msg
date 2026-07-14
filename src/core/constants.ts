@@ -1,67 +1,3 @@
-import type { BatchInterface } from './types.js'
-import { Batch } from './batches/Batch.js'
-
-// === Reactive
-
-/**
- * Maximum iterations when flushing a batch to prevent infinite reactive loops.
- */
-export const MAX_BATCH_ITERATIONS = 100
-
-/**
- * Shared reactive runtime instance used by all reactive primitives.
- */
-export const batcher: BatchInterface = new Batch()
-
-/**
- * Default concurrency for the Scheduler.
- */
-export const DEFAULT_SCHEDULER_CONCURRENCY = 1
-
-// === Queue
-
-/**
- * Initial ring buffer capacity.
- */
-export const INITIAL_CAPACITY = 32
-
-/**
- * Prefix for auto-generated queue entry IDs.
- */
-export const QUEUE_ID_PREFIX = 'q'
-
-/**
- * Default number of parallel workers.
- */
-export const DEFAULT_CONCURRENCY = 1
-
-/**
- * Default handler timeout in milliseconds (0 = no timeout).
- */
-export const DEFAULT_TIMEOUT_MS = 0
-
-/**
- * Default retry count after first failure.
- */
-export const DEFAULT_RETRIES = 0
-
-/**
- * Default bail behavior (false = do not abort on first failure).
- */
-export const DEFAULT_BAIL = false
-
-/**
- * Default scheduling priority (0 = normal).
- */
-export const DEFAULT_PRIORITY = 0
-
-// === NodeWorker
-
-/**
- * Prefix for node worker dispatch message IDs.
- */
-export const NODE_WORKER_ID_PREFIX = 'nw'
-
 // === MsgReader
 
 /**
@@ -148,6 +84,14 @@ export const MSG_HEADER_XBAT_COUNT_OFFSET = 0x48
  * No child/sibling index sentinel.
  */
 export const MSG_PROP_NO_INDEX = -1
+
+/**
+ * Maximum recursion depth accepted by the directory hierarchy builder
+ * (`MsgReader#buildHierarchy`). Defense-in-depth against a pathological
+ * or hostile directory tree — the sibling-chain and visited-set guards
+ * already bound each level, this caps the recursion depth itself.
+ */
+export const MSG_MAX_HIERARCHY_DEPTH = 64
 
 /**
  * Directory entry size in bytes.
@@ -443,6 +387,13 @@ export const MSG_BURNER_FAT_SECTOR_MARKER = -3
 export const MSG_BURNER_DIFAT_SECTOR_MARKER = -4
 
 /**
+ * Maximum UTF-16 code units allowed in a CFB directory entry name (31).
+ * The fixed 64-byte name field holds 32 UTF-16 units including the
+ * NUL terminator, so the name itself is capped at 31 units.
+ */
+export const MSG_BURNER_NAME_MAX = 31
+
+/**
  * Root entry CLSID for MSG compound files.
  */
 export const MSG_BURNER_ROOT_CLSID = new Uint8Array([
@@ -507,34 +458,34 @@ export const MIME_EXTENSIONS: ReadonlyMap<string, string> = new Map([
 	['application/vnd.ms-outlook', '.msg'],
 ])
 
-// === Browser
+/**
+ * Maximum multipart nesting depth accepted by `parseMimePart`.
+ * Guards against pathological or hostile MIME trees causing
+ * unbounded recursion.
+ */
+export const MIME_MAX_DEPTH = 50
 
 /**
- * Default CDP port for browser discovery.
+ * Minimum valid code point for each UTF-8 sequence length, keyed by the
+ * number of continuation bytes (1, 2, or 3). Enforces the WHATWG
+ * requirement that a sequence encode the shortest possible form — an
+ * overlong encoding (a code point below its sequence's minimum) is
+ * rejected rather than accepted by `decodeUtf8`.
  */
-export const BROWSER_DEFAULT_CDP_PORT = 9222
+export const UTF8_SEQUENCE_MINIMUM: Readonly<Record<number, number>> = {
+	1: 0x80,
+	2: 0x800,
+	3: 0x10000,
+}
 
 /**
- * Default timeout in milliseconds for browser connection and navigation.
+ * Windows-1252 high-byte (0x80-0x9F) to Unicode code point lookup.
+ * Index `n` maps byte `0x80 + n` to its Unicode code point; entries
+ * that Windows-1252 leaves undefined map to the byte's own value
+ * (C1 control code passthrough) per the WHATWG encoding standard.
  */
-export const BROWSER_DEFAULT_TIMEOUT_MS = 30_000
-
-/**
- * Default viewport width in pixels.
- */
-export const BROWSER_DEFAULT_VIEWPORT_WIDTH = 1280
-
-/**
- * Default viewport height in pixels.
- */
-export const BROWSER_DEFAULT_VIEWPORT_HEIGHT = 720
-
-/**
- * Path appended to the CDP host to fetch version metadata.
- */
-export const BROWSER_CDP_VERSION_PATH = '/json/version'
-
-/**
- * Protocol prefix for CDP discovery requests.
- */
-export const BROWSER_CDP_PROTOCOL = 'http'
+export const WINDOWS_1252_HIGH: readonly number[] = [
+	0x20ac, 0x0081, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039,
+	0x0152, 0x008d, 0x017d, 0x008f, 0x0090, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
+	0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x009d, 0x017e, 0x0178,
+]

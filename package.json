@@ -1,22 +1,25 @@
 {
-	"name": "@orkestrel/sse",
+	"name": "@orkestrel/msg",
 	"version": "0.0.1",
-	"description": "A typed Server-Sent Events parser — incremental, spec-compliant parsing of event-stream chunks into typed events with data, event, id, and retry fields. Part of the @orkestrel line.",
+	"description": "A zero-dependency Outlook .msg (CFB/OLE2) and .eml (RFC 2822/MIME) email parser — extracts headers, bodies, recipients, and attachments into typed structures, with .msg round-trip rebuild. Part of the @orkestrel line.",
 	"keywords": [
-		"event-stream",
-		"eventsource",
+		"attachments",
+		"cfb",
+		"email",
+		"eml",
+		"mime",
+		"msg",
+		"ole2",
+		"outlook",
 		"parser",
-		"server-sent-events",
-		"sse",
-		"streaming",
 		"typescript"
 	],
-	"homepage": "https://github.com/orkestrel/sse#readme",
-	"bugs": "https://github.com/orkestrel/sse/issues",
+	"homepage": "https://github.com/orkestrel/msg#readme",
+	"bugs": "https://github.com/orkestrel/msg/issues",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/orkestrel/sse.git"
+		"url": "git+https://github.com/orkestrel/msg.git"
 	},
 	"files": [
 		"dist",
