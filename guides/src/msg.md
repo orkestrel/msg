@@ -322,7 +322,7 @@ The implementing class of `MSGInterface`, from [`MSG.ts`](../../src/core/MSG.ts)
 import { MSG } from '@src/core'
 
 const msg = new MSG({ bytes, name: 'message.eml' })
-msg.options // { encoding: 'windows-1252' } (or whatever was configured)
+msg.options // {} when not configured; the encoding default is applied at read time
 msg.chain.format // 'eml' | 'msg'
 msg.chain.messages[0].text
 msg.fields // undefined for 'eml' input; MSGFieldData for 'msg' input

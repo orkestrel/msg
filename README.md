@@ -9,8 +9,9 @@ decoded attachments. `.msg` files are read via a from-scratch CFB (Compound
 File Binary / OLE2) parser that walks the directory tree and extracts MAPI
 properties directly; `.eml` files are read via a from-scratch RFC 2822/MIME
 parser that walks the header block and the (possibly nested) MIME part tree.
-`createMSG` never throws on malformed input — it returns a typed `MSGError`
-inside a `Result`. Part of the `@orkestrel` line.
+`createMSG` surfaces every parse failure as a `Failure<MSGError>` inside a
+`Result` rather than throwing it; an unexpected non-`MSGError` error still
+propagates by throwing. Part of the `@orkestrel` line.
 
 ## Install
 
@@ -52,12 +53,15 @@ if (isSuccess(result)) {
 }
 ```
 
-`createMSG` is synchronous and returns a `Result<MSGInterface, MSGError>` —
-never throws. Format is inferred from the `name` / `mime` hints when
-supplied, or detected from the byte content itself (CFB header for `.msg`,
-RFC 2822 header block for `.eml`) when they are absent. The underlying `MSG`
-class (`new MSG(...)`) parses eagerly and throws `MSGError` on malformed or
-unsupported input — use `createMSG` for the non-throwing `Result` form.
+`createMSG` is synchronous and returns a `Result<MSGInterface, MSGError>`;
+every parse failure surfaces as a `Failure<MSGError>` rather than a throw
+(an unexpected non-`MSGError` error still propagates). Format is inferred
+from the `name` / `mime` hints when supplied. When they are absent, raw
+`Uint8Array`/`ArrayBuffer` input is always parsed as `.msg`; an `EmailInput`
+with no hints is sniffed for the CFB magic header and parsed as `.msg` on a
+match, `.eml` otherwise. The underlying `MSG` class (`new MSG(...)`) parses
+eagerly and throws `MSGError` on malformed or unsupported input — use
+`createMSG` for the non-throwing `Result` form.
 
 ## Guide
 

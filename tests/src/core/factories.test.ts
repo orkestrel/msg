@@ -9,9 +9,10 @@ function readFixture(name: string): Uint8Array {
 	return new Uint8Array(readFileSync(`${fixturesDir}${name}`))
 }
 
-// createMSG — the total Result-returning boundary counterpart to `new MSG()`
-// (which parses eagerly and throws). createMSG never throws: success wraps a
-// working MSGInterface, failure wraps the typed MSGError.
+// createMSG — the Result-returning boundary counterpart to `new MSG()`
+// (which parses eagerly and throws). createMSG surfaces every parse failure
+// as a Failure<MSGError> instead of throwing it; success wraps a working
+// MSGInterface, and an unexpected non-MSGError error still propagates.
 
 describe('createMSG — success', () => {
 	it('parses a real .msg fixture into a working MSGInterface', () => {
