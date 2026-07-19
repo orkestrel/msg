@@ -2,9 +2,9 @@ import type { MSGErrorCode } from './types.js'
 
 // AGENTS §12: an MSG/EML parsing or burning failure `throw`s an `MSGError`
 // carrying a machine-readable `code`, so a `catch` branches on `error.code`
-// instead of parsing the message. `EmailParserInterface.parse` instead
-// surfaces the same `MSGError` through a `Result<EmailChain, MSGError>`
-// so a malformed file never throws across that boundary.
+// instead of parsing the message. `createMSG` instead surfaces the same
+// `MSGError` through a `Result<MSGInterface, MSGError>` so a malformed
+// file never throws across that boundary.
 
 /**
  * An error thrown or returned by the MSG/EML parsing and burning surfaces.

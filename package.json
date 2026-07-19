@@ -1,6 +1,6 @@
 {
 	"name": "@orkestrel/msg",
-	"version": "0.0.3",
+	"version": "0.1.0",
 	"description": "A zero-dependency Outlook .msg (CFB/OLE2) and .eml (RFC 2822/MIME) email parser — extracts headers, bodies, recipients, and attachments into typed structures, with .msg round-trip rebuild. Part of the @orkestrel line.",
 	"keywords": [
 		"attachments",

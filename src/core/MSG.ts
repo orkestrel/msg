@@ -1,14 +1,19 @@
 /**
- * MSGReader
+ * MSG
  *
- * Parses Microsoft Outlook .msg files (CFB/OLE2 compound binary format).
- * Extracts message fields, recipients, and attachments using native
- * DataView operations with no external dependencies.
+ * Parses .eml (RFC 2822 / MIME) and .msg (Outlook CFB/OLE2 compound
+ * binary) files into a structured email chain, and — for .msg input —
+ * exposes the raw MAPI field tree plus attachment/burn access. Parsing
+ * is eager: the constructor either fully parses the input or throws a
+ * typed {@link MSGError}. Zero dependencies: a pure-ES MIME parser
+ * handles .eml, and native DataView operations handle the CFB format.
  */
 
 import type {
-	MSGReaderInterface,
-	MSGReaderOptions,
+	MSGInterface,
+	MSGInput,
+	MSGOptions,
+	EmailChain,
 	MSGFieldData,
 	MSGAttachment,
 	MSGRecipientRole,
@@ -62,30 +67,49 @@ import {
 	MSG_MAX_HIERARCHY_DEPTH,
 } from './constants.js'
 import {
-	isMSGFile,
 	removeTrailingNull,
 	readUTF16String,
 	readANSIString,
 	fileTimeToUTCString,
 	toHexLower,
 	msftUUIDStringify,
+	burnCFB,
 } from './helpers.js'
-import { MSGBurner } from './MSGBurner.js'
-// === MSGReader
+import {
+	isMSGFile,
+	decodeUTF8,
+	detectFormat,
+	parseMIMEPart,
+	extractMessage,
+	extractMessageFromMSG,
+} from './parsers.js'
+
+// === MSG
 
 /**
- * Parses Microsoft Outlook .msg files (CFB/OLE2 compound binary format).
- * Every parsing step treats the input as untrusted: sector and property
- * chains are cycle-guarded and length-capped, every raw byte range is
- * bounds-checked before a view is constructed over it, and every failure
- * surfaces as a typed {@link MSGError} rather than a raw `RangeError` or
- * `TypeError`.
+ * Parses raw .eml or .msg file bytes into a structured {@link EmailChain},
+ * exposing (for .msg input) the raw MAPI field tree, attachment binary
+ * access, and CFB reconstitution. Every parsing step treats the input as
+ * untrusted: sector and property chains are cycle-guarded and
+ * length-capped, every raw byte range is bounds-checked before a view is
+ * constructed over it, and every failure surfaces as a typed
+ * {@link MSGError} rather than a raw `RangeError` or `TypeError`.
+ *
+ * @example
+ * ```ts
+ * import { MSG } from '@src/core'
+ *
+ * const msg = new MSG({ bytes, name: 'message.eml' })
+ * console.log(msg.chain.format)
+ * console.log(msg.chain.messages[0].text)
+ * ```
  */
-export class MSGReader implements MSGReaderInterface {
+export class MSG implements MSGInterface {
+	readonly #options: MSGOptions
+	readonly #chain: EmailChain
 	readonly #view: DataView
 	readonly #byteLength: number
 	readonly #totalSectors: number
-	readonly #options: MSGReaderOptions
 	#bigBlockSize = 0
 	#bigBlockLength = 0
 	#xBlockLength = 0
@@ -104,47 +128,104 @@ export class MSGReader implements MSGReaderInterface {
 	#innerMSGBurners: Record<number, () => Uint8Array> = {}
 
 	/**
-	 * Create a reader over a raw MSG file buffer.
+	 * Create and eagerly parse an MSG/EML instance.
 	 *
-	 * @param input - Raw MSG file bytes, as an `ArrayBuffer` or a `Uint8Array` view
-	 * @param options - Reader configuration
+	 * @param input - Raw MSG bytes, or an {@link EmailInput} for EML/MSG parsing
+	 * @param options - Parser configuration
+	 * @throws {@link MSGError} with code `UNSUPPORTED`, `MALFORMED`, `CYCLE`,
+	 * or `RANGE` when the input cannot be parsed
 	 */
-	constructor(input: ArrayBuffer | Uint8Array, options?: MSGReaderOptions) {
+	constructor(input: MSGInput, options?: MSGOptions) {
+		this.#options = { ...(options ?? {}) }
+
+		let bytes: Uint8Array
+		let name: string | undefined
+		let mime: string | undefined
+		let sniffFormat = true
+
 		if (input instanceof Uint8Array) {
-			this.#view = new DataView(input.buffer, input.byteOffset, input.byteLength)
-			this.#byteLength = input.byteLength
+			bytes = input
+			sniffFormat = false
+		} else if (input instanceof ArrayBuffer) {
+			bytes = new Uint8Array(input)
+			sniffFormat = false
 		} else {
-			this.#view = new DataView(input)
-			this.#byteLength = input.byteLength
+			bytes = input.bytes
+			name = input.name
+			mime = input.mime
 		}
-		this.#options = options ?? {}
+
+		this.#view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+		this.#byteLength = bytes.byteLength
 		this.#totalSectors = Math.ceil(this.#byteLength / MSG_S_BIG_BLOCK_SIZE)
+
+		const format = sniffFormat
+			? (detectFormat(name, mime) ?? (isMSGFile(this.#view) ? 'msg' : undefined))
+			: 'msg'
+
+		if (format === undefined) {
+			throw new MSGError(
+				'UNSUPPORTED',
+				`"${name ?? 'input'}" — only .eml and .msg files are supported`,
+				{
+					name,
+					mime,
+				},
+			)
+		}
+
+		if (format === 'msg') {
+			this.#parseHeader()
+			this.#bat = this.#readBat()
+			if (this.#xbatCount > 0) {
+				this.#readXbat()
+			}
+			this.#sbat = this.#readSbat()
+			this.#properties = this.#readProperties(this.#propertyStart)
+			this.#bigBlockTable = this.#buildBigBlockTable()
+			this.#privatePidToKeyed = {}
+			this.#innerMSGBurners = {}
+
+			const fields = this.#extractFields()
+			this.#fields = fields
+
+			const message = extractMessageFromMSG({
+				parse: () => fields,
+				attachment: (index: number) => this.attachment(index),
+			})
+			this.#chain = { format: 'msg', messages: [message] }
+		} else {
+			const text = decodeUTF8(bytes)
+			const root = parseMIMEPart(text)
+			const message = extractMessage(root)
+			this.#chain = { format: 'eml', messages: [message] }
+		}
 	}
 
 	/**
-	 * Parse the MSG file and return extracted field data.
+	 * Current parser configuration.
 	 *
-	 * @returns Root message field data with nested attachments and recipients
-	 * @throws {@link MSGError} with code `UNSUPPORTED`, `MALFORMED`, `CYCLE`,
-	 * or `RANGE` when the compound file cannot be parsed
+	 * @returns A copy of the configured {@link MSGOptions} — the internal
+	 * reference is never leaked
 	 */
-	parse(): MSGFieldData {
-		if (this.#fields !== undefined) return this.#fields
+	get options(): MSGOptions {
+		return { ...this.#options }
+	}
 
-		this.#parseHeader()
-		this.#bat = this.#readBat()
-		if (this.#xbatCount > 0) {
-			this.#readXbat()
-		}
-		this.#sbat = this.#readSbat()
-		this.#properties = this.#readProperties(this.#propertyStart)
-		this.#bigBlockTable = this.#buildBigBlockTable()
-		this.#privatePidToKeyed = {}
-		this.#innerMSGBurners = {}
+	/**
+	 * The parsed email chain. The detected format is available via
+	 * `chain.format`.
+	 */
+	get chain(): EmailChain {
+		return this.#chain
+	}
 
-		const fields = this.#extractFields()
-		this.#fields = fields
-		return fields
+	/**
+	 * Parsed MSG field data, or `undefined` when the parsed format is
+	 * `'eml'`.
+	 */
+	get fields(): MSGFieldData | undefined {
+		return this.#fields
 	}
 
 	/**
@@ -155,8 +236,11 @@ export class MSGReader implements MSGReaderInterface {
 	 * @throws {@link MSGError} with code `RANGE` when the index is out of bounds
 	 */
 	attachment(index: number): MSGAttachment {
-		const parsed = this.parse()
-		const attachments = parsed.attachments
+		if (this.#fields === undefined) {
+			throw new MSGError('RANGE', `Attachment index ${index} out of range`, { index })
+		}
+
+		const attachments = this.#fields.attachments
 		if (attachments === undefined || index < 0 || index >= attachments.length) {
 			throw new MSGError('RANGE', `Attachment index ${index} out of range`, { index })
 		}
@@ -199,10 +283,9 @@ export class MSGReader implements MSGReaderInterface {
 	 * cannot be reconstituted
 	 */
 	burn(): Uint8Array {
-		const parsed = this.parse()
-		if (parsed.kind !== 'msg') {
+		if (this.#chain.format !== 'msg' || this.#fields === undefined) {
 			throw new MSGError('BURN', 'Unable to burn a non-message field data structure', {
-				kind: parsed.kind,
+				format: this.#chain.format,
 			})
 		}
 
@@ -514,7 +597,9 @@ export class MSGReader implements MSGReaderInterface {
 						throw new MSGError(
 							'CYCLE',
 							`Directory sibling chain revisits property index ${current.nextProperty}`,
-							{ index: current.nextProperty },
+							{
+								index: current.nextProperty,
+							},
 						)
 					}
 					siblingVisited.add(current.nextProperty)
@@ -1109,7 +1194,7 @@ export class MSGReader implements MSGReaderInterface {
 		}
 	}
 
-	// === Burner (CFB reconstitution for embedded MSG)
+	// === Burner Entry Assembly (CFB reconstitution for top-level burn and embedded MSG)
 
 	#burnFolder(
 		folder: MSGDirectoryEntry,
@@ -1125,8 +1210,7 @@ export class MSGReader implements MSGReaderInterface {
 			},
 		]
 		this.#registerBurnerFolder(entries, 0, folder, padTopLevelPropertyStream, includeRootNameId)
-		const burner = new MSGBurner()
-		return burner.burn(entries)
+		return burnCFB(entries)
 	}
 
 	#registerBurnerFolder(

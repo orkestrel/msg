@@ -1,77 +1,42 @@
-import type {
-	MSGReaderInterface,
-	MSGReaderOptions,
-	MSGBurnerInterface,
-	EmailParserInterface,
-	EmailParserOptions,
-} from './types.js'
-import { MSGReader } from './MSGReader.js'
-import { MSGBurner } from './MSGBurner.js'
-import { EmailParser } from './EmailParser.js'
+import type { MSGInput, MSGOptions, MSGInterface, Result } from './types.js'
+import type { MSGError } from './errors.js'
+import { MSG } from './MSG.js'
+import { success, failure } from './helpers.js'
+import { isMSGError } from './errors.js'
 
-// === MSGReader
+// === MSG
 
 /**
- * Create a new .msg file reader.
+ * Create a new {@link MSGInterface} for the given .eml or .msg input.
  *
- * @param buffer - Raw .msg file bytes
- * @param options - Optional reader configuration
- * @returns A working {@link MSGReaderInterface}
+ * @remarks
+ * This is a total boundary: unlike `new MSG(...)`, which parses eagerly
+ * and throws a typed {@link MSGError} on malformed or unsupported input,
+ * `createMSG` never throws — every failure surfaces as a `Failure` in the
+ * returned {@link Result}. This is a deliberate NEW dual API, not a mirror
+ * of `new MSG()`: reach for `new MSG()` when a thrown exception is the
+ * desired control flow, and `createMSG` when a `Result` is preferred.
  *
- * @example
- * ```ts
- * import { createMSGReader } from '@src/core'
- *
- * const reader = createMSGReader(buffer)
- * const data = reader.parse()
- * console.log(data.kind)
- * ```
- */
-export function createMSGReader(
-	buffer: ArrayBuffer | Uint8Array,
-	options?: MSGReaderOptions,
-): MSGReaderInterface {
-	return new MSGReader(buffer, options)
-}
-
-// === MSGBurner
-
-/**
- * Create a new CFB binary writer for reconstituting .msg files.
- *
- * @returns A working {@link MSGBurnerInterface}
- *
- * @example
- * ```ts
- * import { createMSGBurner } from '@src/core'
- *
- * const burner = createMSGBurner()
- * const binary = burner.burn(entries)
- * ```
- */
-export function createMSGBurner(): MSGBurnerInterface {
-	return new MSGBurner()
-}
-
-// === EmailParser
-
-/**
- * Create a new email file parser for .eml and .msg input.
- *
+ * @param input - Raw .eml/.msg bytes or buffer
  * @param options - Optional parser configuration
- * @returns A working {@link EmailParserInterface}
+ * @returns A `Result` carrying a working {@link MSGInterface} on success,
+ * or the {@link MSGError} on failure
  *
  * @example
  * ```ts
- * import { createEmailParser, isSuccess } from '@src/core'
+ * import { createMSG, isSuccess } from '@src/core'
  *
- * const parser = createEmailParser()
- * const result = parser.parse({ bytes, name: 'message.eml' })
+ * const result = createMSG(bytes)
  * if (isSuccess(result)) {
- * 	console.log(result.value.messages[0].subject)
+ * 	console.log(result.value.chain.format)
  * }
  * ```
  */
-export function createEmailParser(options?: EmailParserOptions): EmailParserInterface {
-	return new EmailParser(options)
+export function createMSG(input: MSGInput, options?: MSGOptions): Result<MSGInterface, MSGError> {
+	try {
+		return success(new MSG(input, options))
+	} catch (error) {
+		if (isMSGError(error)) return failure(error)
+		throw error
+	}
 }

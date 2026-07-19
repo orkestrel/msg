@@ -4,18 +4,30 @@ import type {
 	Failure,
 	EmailFormat,
 	MIMEHeader,
-	MIMEPart,
-	EmailAttachment,
-	EmailMessage,
 	MSGEncoding,
-	MSGReaderInterface,
+	MSGBurnerEntry,
+	MSGBurnerLiteEntry,
 } from './types.js'
 import { MSGError } from './errors.js'
+import { decodeUTF8 } from './parsers.js'
 import {
 	MIME_EXTENSIONS,
-	MIME_MAX_DEPTH,
 	WINDOWS_1252_HIGH,
-	UTF8_SEQUENCE_MINIMUM,
+	MSG_FILE_HEADER,
+	MSG_TYPE_DIRECTORY,
+	MSG_TYPE_DOCUMENT,
+	MSG_END_OF_CHAIN,
+	MSG_UNUSED_BLOCK,
+	MSG_BURNER_SECTOR_SIZE,
+	MSG_BURNER_MINI_SECTOR_SIZE,
+	MSG_BURNER_MINI_STREAM_CUTOFF,
+	MSG_BURNER_INTS_PER_SECTOR,
+	MSG_BURNER_DIFAT_HEADER_SLOTS,
+	MSG_BURNER_DIR_ENTRY_SIZE,
+	MSG_BURNER_FAT_SECTOR_MARKER,
+	MSG_BURNER_DIFAT_SECTOR_MARKER,
+	MSG_BURNER_ROOT_CLSID,
+	MSG_BURNER_NAME_MAX,
 } from './constants.js'
 
 // === Result Helpers
@@ -81,21 +93,6 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // === MSG Helpers
-
-/**
- * Validate that a DataView starts with the CFB magic header.
- *
- * @param view - DataView to check
- * @returns True when the first 8 bytes match the CFB signature
- */
-export function isMSGFile(view: DataView): boolean {
-	const header = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
-	if (view.byteLength < header.length) return false
-	for (let i = 0; i < header.length; i++) {
-		if (view.getUint8(i) !== header[i]) return false
-	}
-	return true
-}
 
 /**
  * Remove trailing null characters from a string.
@@ -362,99 +359,6 @@ export function encodeUTF8(text: string): Uint8Array {
 }
 
 /**
- * Decode UTF-8 bytes into a string, WHATWG-style: an invalid byte
- * sequence decodes as U+FFFD rather than throwing. Rejects overlong
- * encodings, surrogate code points (0xD800-0xDFFF), and code points
- * beyond 0x10FFFF — each invalid sequence yields exactly one U+FFFD
- * and decoding resumes at the next lead byte.
- *
- * @param bytes - UTF-8 byte array
- * @returns Decoded string
- *
- * @example
- * ```ts
- * decodeUTF8(new Uint8Array([65])) // 'A'
- * decodeUTF8(new Uint8Array([0xff])) // '�'
- * ```
- */
-export function decodeUTF8(bytes: Uint8Array): string {
-	let result = ''
-	let i = 0
-
-	while (i < bytes.length) {
-		const byte0 = bytes[i]
-
-		if (byte0 < 0x80) {
-			result += String.fromCharCode(byte0)
-			i++
-			continue
-		}
-
-		let length = 0
-		let codePoint = 0
-		if ((byte0 & 0xe0) === 0xc0) {
-			length = 1
-			codePoint = byte0 & 0x1f
-		} else if ((byte0 & 0xf0) === 0xe0) {
-			length = 2
-			codePoint = byte0 & 0x0f
-		} else if ((byte0 & 0xf8) === 0xf0) {
-			length = 3
-			codePoint = byte0 & 0x07
-		} else {
-			result += '�'
-			i++
-			continue
-		}
-
-		if (i + length >= bytes.length) {
-			result += '�'
-			i++
-			continue
-		}
-
-		let valid = true
-		let value = codePoint
-		for (let j = 1; j <= length; j++) {
-			const next = bytes[i + j]
-			if ((next & 0xc0) !== 0x80) {
-				valid = false
-				break
-			}
-			value = (value << 6) | (next & 0x3f)
-		}
-
-		if (!valid) {
-			result += '�'
-			i++
-			continue
-		}
-
-		const minimum = UTF8_SEQUENCE_MINIMUM[length]
-		const isOverlong = minimum !== undefined && value < minimum
-		const isSurrogate = value >= 0xd800 && value <= 0xdfff
-		const isOutOfRange = value > 0x10ffff
-
-		if (isOverlong || isSurrogate || isOutOfRange) {
-			result += '�'
-			i += length + 1
-			continue
-		}
-
-		i += length + 1
-
-		if (value >= 0x10000) {
-			value -= 0x10000
-			result += String.fromCharCode(0xd800 + (value >> 10), 0xdc00 + (value & 0x3ff))
-		} else {
-			result += String.fromCharCode(value)
-		}
-	}
-
-	return result
-}
-
-/**
  * Decode Latin-1 (ISO-8859-1) bytes into a string, byte-for-code-point.
  *
  * @param bytes - Latin-1 byte array
@@ -542,35 +446,6 @@ export function isEmailFormat(value: unknown): value is EmailFormat {
 }
 
 /**
- * Derive the EmailFormat from a file name and/or MIME type.
- * Returns undefined when the format cannot be determined.
- *
- * @param name - File name to inspect
- * @param mime - MIME type to inspect
- * @returns Detected format or undefined
- *
- * @example
- * ```ts
- * detectFormat('message.eml', undefined) // 'eml'
- * detectFormat(undefined, 'application/vnd.ms-outlook') // 'msg'
- * ```
- */
-export function detectFormat(
-	name: string | undefined,
-	mime: string | undefined,
-): EmailFormat | undefined {
-	const lower = name?.toLowerCase()
-
-	if (lower?.endsWith('.eml') === true) return 'eml'
-	if (lower?.endsWith('.msg') === true) return 'msg'
-
-	if (mime === 'message/rfc822') return 'eml'
-	if (mime === 'application/vnd.ms-outlook') return 'msg'
-
-	return undefined
-}
-
-/**
  * Parse headers from a raw RFC 2822 / MIME header text block.
  *
  * @param text - Raw header text
@@ -617,64 +492,6 @@ export function parseMIMEHeaders(text: string): ReadonlyMap<string, MIMEHeader> 
 		}
 	}
 	return map
-}
-
-/**
- * Parse a raw RFC 2822 / MIME text string into a MIMEPart tree.
- * Line endings are normalised to \n before processing. Recursion is
- * capped at {@link MIME_MAX_DEPTH} to guard against a hostile or
- * pathological multipart nesting cycle.
- *
- * @param raw - Raw MIME text
- * @param depth - Current recursion depth (internal; callers omit this)
- * @returns Parsed MIMEPart tree
- * @throws {@link MSGError} with code `CYCLE` when nesting exceeds {@link MIME_MAX_DEPTH}
- */
-export function parseMIMEPart(raw: string, depth = 0): MIMEPart {
-	if (depth > MIME_MAX_DEPTH) {
-		throw new MSGError('CYCLE', 'MIME multipart nesting exceeds maximum depth', {
-			depth,
-			max: MIME_MAX_DEPTH,
-		})
-	}
-
-	const normalised = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-	const split = normalised.indexOf('\n\n')
-	const headerText = split === -1 ? normalised : normalised.slice(0, split)
-	const body = split === -1 ? '' : normalised.slice(split + 2)
-
-	const headers = parseMIMEHeaders(headerText)
-	const contentType = headers.get('content-type')
-	const primaryType = (contentType?.value ?? '').split(';')[0].trim().toLowerCase()
-	const boundary = contentType?.params.get('boundary') ?? ''
-
-	const parts: MIMEPart[] = []
-	if (primaryType.startsWith('multipart/') && boundary !== '') {
-		const delimiter = '--' + boundary
-		const lines = body.split('\n')
-		let current: string[] = []
-		let inside = false
-
-		for (const line of lines) {
-			const trimmed = line.trimEnd()
-			if (trimmed === delimiter + '--') {
-				if (inside && current.length > 0) parts.push(parseMIMEPart(current.join('\n'), depth + 1))
-				inside = false
-				break
-			}
-			if (trimmed === delimiter) {
-				if (inside && current.length > 0) parts.push(parseMIMEPart(current.join('\n'), depth + 1))
-				current = []
-				inside = true
-				continue
-			}
-			if (inside) current.push(line)
-		}
-
-		if (inside && current.length > 0) parts.push(parseMIMEPart(current.join('\n'), depth + 1))
-	}
-
-	return { headers, body, parts }
 }
 
 /**
@@ -786,169 +603,6 @@ export function formatEmailAddress(name: string | undefined, email: string | und
 	return e
 }
 
-/**
- * Extract a single EmailMessage from a parsed MSGReader.
- * Reads field data and attachments from the reader interface.
- *
- * Each attachment is read independently: a corrupt attachment throws
- * from `reader.attachment(i)` is caught and that attachment is skipped
- * so the rest of the message still parses. This containment keeps one
- * damaged attachment stream from failing the entire message extraction.
- *
- * @param reader - A parsed MSGReaderInterface instance
- * @returns Structured EmailMessage
- */
-export function extractMessageFromMSG(reader: MSGReaderInterface): EmailMessage {
-	const data = reader.parse()
-
-	const from = formatEmailAddress(data.senderName, data.senderSMTPAddress ?? data.senderEmail)
-
-	const recipients = data.recipients ?? []
-	const to = recipients
-		.filter((r) => r.recipientRole === 'to')
-		.map((r) => formatEmailAddress(r.name, r.smtpAddress ?? r.email))
-		.filter((s) => s.length > 0)
-	const cc = recipients
-		.filter((r) => r.recipientRole === 'cc')
-		.map((r) => formatEmailAddress(r.name, r.smtpAddress ?? r.email))
-		.filter((s) => s.length > 0)
-
-	const rawDate = data.messageDeliveryTime ?? data.clientSubmitTime
-	let date: Date | undefined
-	if (rawDate !== undefined) {
-		const parsed = new Date(rawDate)
-		date = isNaN(parsed.getTime()) ? undefined : parsed
-	}
-
-	const attachments: EmailAttachment[] = []
-	const attachmentFields = data.attachments ?? []
-	for (let i = 0; i < attachmentFields.length; i++) {
-		const attachment = attachmentFields[i]
-		if (attachment === undefined) continue
-		if (attachment.attachmentHidden === true) continue
-		if (attachment.innerMSGContent === true) continue
-		try {
-			const extracted = reader.attachment(i)
-			attachments.push({
-				name: extracted.fileName,
-				mimeType: attachment.mimeType ?? 'application/octet-stream',
-				size: extracted.content.length,
-				bytes: extracted.content,
-			})
-		} catch {
-			// A single corrupt attachment stream must not fail the whole message.
-			continue
-		}
-	}
-
-	return {
-		from,
-		to,
-		cc,
-		subject: data.subject ?? '',
-		date,
-		text: data.body ?? '',
-		html: data.bodyHTML ?? '',
-		attachments,
-	}
-}
-
-/**
- * Extract a single EmailMessage from a top-level MIMEPart.
- * Walks the full MIME tree to collect text, HTML, and attachments.
- *
- * @param part - Root MIMEPart from parseMIMEPart
- * @returns Structured EmailMessage
- */
-export function extractMessage(part: MIMEPart): EmailMessage {
-	const headerValue = (name: string): string => decodeMIMEWords(part.headers.get(name)?.value ?? '')
-
-	const splitAddresses = (raw: string): readonly string[] =>
-		raw.length === 0
-			? []
-			: raw
-					.split(',')
-					.map((s) => s.trim())
-					.filter((s) => s.length > 0)
-
-	const rawDate = part.headers.get('date')?.value
-	let date: Date | undefined
-	if (rawDate !== undefined) {
-		const parsed = new Date(rawDate)
-		date = isNaN(parsed.getTime()) ? undefined : parsed
-	}
-
-	const collectedText: string[] = []
-	const collectedHTML: string[] = []
-	const attachments: EmailAttachment[] = []
-
-	const walk = (p: MIMEPart) => {
-		const contentType = p.headers.get('content-type')
-		const disposition = p.headers.get('content-disposition')
-		const transferEncoding = p.headers.get('content-transfer-encoding')
-
-		const primaryType = (contentType?.value ?? 'text/plain').split(';')[0].trim().toLowerCase()
-		const encoding = (transferEncoding?.value ?? '7bit').trim()
-		const charset = contentType?.params.get('charset') ?? 'utf-8'
-		const dispositionKind = (disposition?.value ?? '').trim().toLowerCase()
-
-		if (primaryType.startsWith('multipart/')) {
-			for (const child of p.parts) walk(child)
-			return
-		}
-
-		const isAttachmentPart = dispositionKind === 'attachment'
-
-		if (isAttachmentPart) {
-			const name =
-				disposition?.params.get('filename') ?? contentType?.params.get('name') ?? 'attachment'
-			const bytes = decodeMIMEEncoding(p.body, encoding)
-			attachments.push({
-				name: decodeMIMEWords(name),
-				mimeType: primaryType,
-				size: bytes.length,
-				bytes,
-			})
-			return
-		}
-
-		if (primaryType === 'text/plain') {
-			collectedText.push(decodeMIMEText(p.body, encoding, charset))
-			return
-		}
-
-		if (primaryType === 'text/html') {
-			collectedHTML.push(decodeMIMEText(p.body, encoding, charset))
-			return
-		}
-
-		// Inline binary parts with a filename become attachments
-		const inlineName = contentType?.params.get('name') ?? disposition?.params.get('filename')
-		if (inlineName !== undefined) {
-			const bytes = decodeMIMEEncoding(p.body, encoding)
-			attachments.push({
-				name: decodeMIMEWords(inlineName),
-				mimeType: primaryType,
-				size: bytes.length,
-				bytes,
-			})
-		}
-	}
-
-	walk(part)
-
-	return {
-		from: headerValue('from'),
-		to: splitAddresses(headerValue('to')),
-		cc: splitAddresses(headerValue('cc')),
-		subject: headerValue('subject'),
-		date,
-		text: collectedText.join(''),
-		html: collectedHTML.join(''),
-		attachments,
-	}
-}
-
 // === Attachment Helpers
 
 /**
@@ -980,4 +634,386 @@ export function inferExtension(mimeType?: string, fileName?: string): string {
 	}
 
 	return '.bin'
+}
+
+// === MSGBurner (CFB writer)
+
+/**
+ * Reconstitute a valid CFB (Compound Binary File) from a flat list of
+ * {@link MSGBurnerEntry} descriptors — root storage at index 0, its
+ * children reachable through `children` indices.
+ *
+ * @remarks
+ * Builds a red-black directory tree, allocates FAT/mini-FAT/DIFAT
+ * sectors, then writes the header, directory entries, and stream data
+ * into a single binary. Used to extract embedded `.msg` attachments as
+ * standalone CFB files.
+ *
+ * @param entries - Flat entry list starting with Root Entry at index 0
+ * @returns Complete CFB binary as Uint8Array
+ * @throws {@link MSGError} with code `BURN` when an entry name exceeds
+ * the {@link MSG_BURNER_NAME_MAX} UTF-16 code unit limit the CFB directory entry format allows
+ */
+export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
+	const liteEntries: MSGBurnerLiteEntry[] = entries.map((entry) => ({
+		entry,
+		left: -1,
+		right: -1,
+		child: -1,
+		firstSector: 0,
+		mini: entry.type === MSG_TYPE_DOCUMENT && entry.length < MSG_BURNER_MINI_STREAM_CUTOFF,
+		red: false,
+	}))
+	const fat: number[] = []
+	const miniFat: number[] = []
+
+	const allocateFat = (count: number): number => {
+		const first = fat.length
+		for (let i = 0; i < count; i++) {
+			const next = i + 1 === count ? MSG_END_OF_CHAIN : first + i + 1
+			fat.push(next)
+		}
+		return first
+	}
+
+	const allocateFatAs = (count: number, value: number): number => {
+		const first = fat.length
+		for (let i = 0; i < count; i++) {
+			fat.push(value)
+		}
+		return first
+	}
+
+	const allocateMiniFat = (count: number): number => {
+		const first = miniFat.length
+		for (let i = 0; i < count; i++) {
+			const next = i + 1 === count ? MSG_END_OF_CHAIN : first + i + 1
+			miniFat.push(next)
+		}
+		return first
+	}
+
+	function buildTree(dirIndex: number): void {
+		const liteEntry = liteEntries[dirIndex]
+		const children = liteEntry.entry.children
+		if (children === undefined || children.length === 0) return
+
+		const sorted = children
+			.slice()
+			.sort((a, b) => compareCFBName(liteEntries[a].entry.name, liteEntries[b].entry.name))
+
+		const mid = Math.floor(sorted.length / 2)
+		const rootIndex = sorted[mid]
+		const rootEntry = liteEntries[rootIndex]
+		rootEntry.red = false
+		rootEntry.left = splitTree(sorted, 0, mid, true)
+		rootEntry.right = splitTree(sorted, mid + 1, sorted.length, true)
+		liteEntry.child = rootIndex
+
+		for (let i = 0; i < sorted.length; i++) {
+			const idx = sorted[i]
+			if (liteEntries[idx].entry.type === MSG_TYPE_DIRECTORY) {
+				buildTree(idx)
+			}
+		}
+	}
+
+	function splitTree(sorted: number[], start: number, end: number, red: boolean): number {
+		if (start >= end) return -1
+		const mid = Math.floor((start + end) / 2)
+		const entryIndex = sorted[mid]
+		const entry = liteEntries[entryIndex]
+		entry.red = red
+		entry.left = splitTree(sorted, start, mid, !red)
+		entry.right = splitTree(sorted, mid + 1, end, !red)
+		return entryIndex
+	}
+
+	function buildDifat(
+		difat1: number[],
+		difat2: number[],
+		numFatSectors: number,
+		firstFatSector: number,
+		firstDifatSector: number,
+	): void {
+		let x = 0
+		for (; x < MSG_BURNER_DIFAT_HEADER_SLOTS && x < numFatSectors; x++) {
+			difat1.push(firstFatSector + x)
+		}
+		let nextDifatSector = firstDifatSector + 1
+		for (; x < numFatSectors; x++) {
+			difat2.push(firstFatSector + x)
+			if ((difat2.length & 127) === 127) {
+				difat2.push(nextDifatSector)
+				nextDifatSector++
+			}
+		}
+		while (difat2.length > 0 && (difat2.length & 127) !== 0) {
+			const remain = difat2.length & 127
+			difat2.push(remain === 127 ? MSG_END_OF_CHAIN : MSG_UNUSED_BLOCK)
+		}
+	}
+
+	function writeHeader(
+		view: DataView,
+		bytes: Uint8Array,
+		numFatSectors: number,
+		entriesFirstSector: number,
+		firstMiniFatSector: number,
+		numMiniFatSectors: number,
+		firstDifatSector: number,
+		numDifatSectors: number,
+		difat1: number[],
+	): void {
+		bytes.set(MSG_FILE_HEADER, 0)
+		view.setUint16(0x18, 0x3e, true)
+		view.setUint16(0x1a, 0x03, true)
+		view.setUint16(0x1c, 0xfffe, true)
+		view.setUint16(0x1e, 9, true)
+		view.setUint16(0x20, 6, true)
+
+		view.setInt32(0x2c, numFatSectors, true)
+		view.setInt32(0x30, entriesFirstSector, true)
+
+		view.setInt32(0x38, MSG_BURNER_MINI_STREAM_CUTOFF, true)
+		view.setInt32(0x3c, firstMiniFatSector, true)
+		view.setInt32(0x40, numMiniFatSectors, true)
+		view.setInt32(0x44, firstDifatSector, true)
+		view.setInt32(0x48, numDifatSectors, true)
+
+		let offset = 0x4c
+		for (let i = 0; i < difat1.length; i++) {
+			view.setInt32(offset, difat1[i], true)
+			offset += 4
+		}
+		for (let i = difat1.length; i < MSG_BURNER_DIFAT_HEADER_SLOTS; i++) {
+			view.setInt32(offset, MSG_UNUSED_BLOCK, true)
+			offset += 4
+		}
+	}
+
+	function writeDirectoryEntries(
+		view: DataView,
+		bytes: Uint8Array,
+		entriesFirstSector: number,
+		bytesMiniFat: number,
+	): void {
+		for (let x = 0; x < liteEntries.length; x++) {
+			const le = liteEntries[x]
+			const pos = MSG_BURNER_SECTOR_SIZE * (1 + entriesFirstSector) + MSG_BURNER_DIR_ENTRY_SIZE * x
+
+			// CFB caps a directory entry name at MSG_BURNER_NAME_MAX UTF-16 code
+			// units + a NUL terminator inside the fixed 64-byte name field
+			// (offsets 0x00-0x3f). A longer name would overrun into the
+			// type/color/sibling fields that follow, so validate before
+			// writing any name bytes.
+			const name = le.entry.name
+			if (name.length > MSG_BURNER_NAME_MAX) {
+				throw new MSGError(
+					'BURN',
+					`directory entry name exceeds ${MSG_BURNER_NAME_MAX} characters`,
+					{
+						name,
+					},
+				)
+			}
+
+			for (let i = 0; i < name.length; i++) {
+				view.setUint16(pos + i * 2, name.charCodeAt(i), true)
+			}
+			// NUL terminator + recorded byte length: (chars + 1) UTF-16 units.
+			view.setUint16(pos + name.length * 2, 0, true)
+
+			view.setUint16(pos + 0x40, (name.length + 1) * 2, true)
+			bytes[pos + 0x42] = le.entry.type
+			bytes[pos + 0x43] = le.red ? 0 : 1
+			view.setInt32(pos + 0x44, le.left, true)
+			view.setInt32(pos + 0x48, le.right, true)
+			view.setInt32(pos + 0x4c, le.child, true)
+
+			if (x === 0) {
+				bytes.set(MSG_BURNER_ROOT_CLSID, pos + 0x50)
+			}
+
+			const length = x === 0 ? bytesMiniFat : le.entry.length
+			const firstSector =
+				length !== 0 ? le.firstSector : le.entry.type === MSG_TYPE_DIRECTORY ? 0 : MSG_END_OF_CHAIN
+
+			view.setInt32(pos + 0x74, firstSector, true)
+			view.setInt32(pos + 0x78, length, true)
+		}
+	}
+
+	function writeLargeStreams(bytes: Uint8Array): void {
+		for (let i = 0; i < liteEntries.length; i++) {
+			const le = liteEntries[i]
+			if (
+				le.entry.type === MSG_TYPE_DOCUMENT &&
+				!le.mini &&
+				le.entry.binaryProvider !== undefined
+			) {
+				const data = le.entry.binaryProvider()
+				bytes.set(data, MSG_BURNER_SECTOR_SIZE * (1 + le.firstSector))
+			}
+		}
+	}
+
+	function writeMiniStreams(bytes: Uint8Array, firstMiniDataSector: number): void {
+		if (firstMiniDataSector === MSG_END_OF_CHAIN) return
+
+		for (let i = 0; i < liteEntries.length; i++) {
+			const le = liteEntries[i]
+			if (le.entry.type === MSG_TYPE_DOCUMENT && le.mini && le.entry.binaryProvider !== undefined) {
+				const data = le.entry.binaryProvider()
+				bytes.set(
+					data,
+					MSG_BURNER_SECTOR_SIZE * (1 + firstMiniDataSector) +
+						MSG_BURNER_MINI_SECTOR_SIZE * le.firstSector,
+				)
+			}
+		}
+	}
+
+	function writeMiniFat(view: DataView, firstMiniFatSector: number): void {
+		if (firstMiniFatSector === MSG_END_OF_CHAIN) return
+
+		let offset = MSG_BURNER_SECTOR_SIZE * (1 + firstMiniFatSector)
+		for (let i = 0; i < miniFat.length; i++) {
+			view.setInt32(offset, miniFat[i], true)
+			offset += 4
+		}
+	}
+
+	function writeFat(view: DataView, firstFatSector: number): void {
+		while (fat.length % MSG_BURNER_INTS_PER_SECTOR !== 0) {
+			fat.push(MSG_UNUSED_BLOCK)
+		}
+
+		let offset = MSG_BURNER_SECTOR_SIZE * (1 + firstFatSector)
+		for (let i = 0; i < fat.length; i++) {
+			view.setInt32(offset, fat[i], true)
+			offset += 4
+		}
+	}
+
+	function writeDifat(
+		view: DataView,
+		difat2: number[],
+		firstDifatSector: number,
+		numDifatSectors: number,
+	): void {
+		if (numDifatSectors < 1) return
+
+		let offset = MSG_BURNER_SECTOR_SIZE * (1 + firstDifatSector)
+		for (let i = 0; i < difat2.length; i++) {
+			view.setInt32(offset, difat2[i], true)
+			offset += 4
+		}
+	}
+
+	buildTree(0)
+
+	// Allocate directory sectors
+	const dirSectorCount = sectorsNeeded(
+		MSG_BURNER_DIR_ENTRY_SIZE * liteEntries.length,
+		MSG_BURNER_SECTOR_SIZE,
+	)
+	const entriesFirstSector = allocateFat(dirSectorCount)
+
+	// Allocate large document streams
+	for (let i = 0; i < liteEntries.length; i++) {
+		const le = liteEntries[i]
+		if (le.entry.type === MSG_TYPE_DOCUMENT && !le.mini) {
+			le.firstSector =
+				le.entry.length === 0
+					? MSG_END_OF_CHAIN
+					: allocateFat(sectorsNeeded(le.entry.length, MSG_BURNER_SECTOR_SIZE))
+		}
+	}
+
+	// Allocate mini-stream document streams
+	for (let i = 0; i < liteEntries.length; i++) {
+		const le = liteEntries[i]
+		if (le.entry.type === MSG_TYPE_DOCUMENT && le.mini) {
+			le.firstSector =
+				le.entry.length === 0
+					? MSG_END_OF_CHAIN
+					: allocateMiniFat(sectorsNeeded(le.entry.length, MSG_BURNER_MINI_SECTOR_SIZE))
+		}
+	}
+
+	// Allocate mini-FAT sectors
+	const numMiniFatSectors = sectorsNeeded(4 * miniFat.length, MSG_BURNER_SECTOR_SIZE)
+	const firstMiniFatSector =
+		numMiniFatSectors !== 0 ? allocateFat(numMiniFatSectors) : MSG_END_OF_CHAIN
+
+	// Allocate mini-stream data sectors (root entry body)
+	const bytesMiniFat = MSG_BURNER_MINI_SECTOR_SIZE * miniFat.length
+	const firstMiniDataSector =
+		bytesMiniFat > 0
+			? allocateFat(sectorsNeeded(bytesMiniFat, MSG_BURNER_SECTOR_SIZE))
+			: MSG_END_OF_CHAIN
+
+	liteEntries[0].firstSector =
+		firstMiniDataSector === MSG_END_OF_CHAIN ? MSG_END_OF_CHAIN : firstMiniDataSector
+
+	// Allocate FAT sectors (self-referencing)
+	const estimatedFatSectors = Math.max(
+		1,
+		sectorsNeeded(
+			4 * (fat.length + Math.ceil(fat.length / MSG_BURNER_INTS_PER_SECTOR) + 1),
+			MSG_BURNER_SECTOR_SIZE,
+		),
+	)
+	const firstFatSector = allocateFatAs(estimatedFatSectors, MSG_BURNER_FAT_SECTOR_MARKER)
+	const numFatSectors = fat.length - firstFatSector
+
+	// Allocate DIFAT sectors
+	const numDifatSectors =
+		numFatSectors > MSG_BURNER_DIFAT_HEADER_SLOTS
+			? sectorsNeeded(
+					4 * Math.ceil(((numFatSectors - MSG_BURNER_DIFAT_HEADER_SLOTS) / 127) * 128),
+					MSG_BURNER_SECTOR_SIZE,
+				)
+			: 0
+	const firstDifatSector =
+		numDifatSectors !== 0
+			? allocateFatAs(numDifatSectors, MSG_BURNER_DIFAT_SECTOR_MARKER)
+			: MSG_END_OF_CHAIN
+
+	// Build the binary
+	const totalSize = MSG_BURNER_SECTOR_SIZE * (1 + fat.length)
+	const buffer = new ArrayBuffer(totalSize)
+	const view = new DataView(buffer)
+	const bytes = new Uint8Array(buffer)
+
+	// Pad mini-FAT to sector boundary
+	while (miniFat.length % MSG_BURNER_INTS_PER_SECTOR !== 0) {
+		miniFat.push(MSG_UNUSED_BLOCK)
+	}
+
+	// Build DIFAT arrays
+	const difat1: number[] = []
+	const difat2: number[] = []
+	buildDifat(difat1, difat2, numFatSectors, firstFatSector, firstDifatSector)
+
+	writeHeader(
+		view,
+		bytes,
+		numFatSectors,
+		entriesFirstSector,
+		firstMiniFatSector,
+		numMiniFatSectors,
+		firstDifatSector,
+		numDifatSectors,
+		difat1,
+	)
+	writeDirectoryEntries(view, bytes, entriesFirstSector, bytesMiniFat)
+	writeLargeStreams(bytes)
+	writeMiniStreams(bytes, firstMiniDataSector)
+	writeMiniFat(view, firstMiniFatSector)
+	writeFat(view, firstFatSector)
+	writeDifat(view, difat2, firstDifatSector, numDifatSectors)
+
+	return new Uint8Array(buffer)
 }

@@ -1,14 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import {
-	createMSGReader,
-	createMSGBurner,
-	createEmailParser,
-	MSGReader,
-	MSGBurner,
-	EmailParser,
-} from '@src/core'
-import { describe, expect, it } from 'vitest'
+import { describe, it, expect } from 'vitest'
+import { createMSG, isSuccess, isFailure, isMSGError } from '@src/core'
 
 const fixturesDir = fileURLToPath(new URL('./fixtures/', import.meta.url))
 
@@ -16,126 +9,60 @@ function readFixture(name: string): Uint8Array {
 	return new Uint8Array(readFileSync(`${fixturesDir}${name}`))
 }
 
-// createMSGReader — factory returns a working MSGReaderInterface. Full
-// parse behavior lives in MSGReader.test.ts; here we assert the factory
-// hands back a usable, correctly-typed instance across both input forms.
+// createMSG — the total Result-returning boundary counterpart to `new MSG()`
+// (which parses eagerly and throws). createMSG never throws: success wraps a
+// working MSGInterface, failure wraps the typed MSGError.
 
-describe('createMSGReader', () => {
-	it('returns an instance of MSGReader', () => {
+describe('createMSG — success', () => {
+	it('parses a real .msg fixture into a working MSGInterface', () => {
 		const bytes = readFixture('test.msg')
-		const reader = createMSGReader(bytes)
+		const result = createMSG(bytes)
 
-		expect(reader).toBeInstanceOf(MSGReader)
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) throw new Error('unreachable')
+		expect(result.value.chain.format).toBe('msg')
+		expect(result.value.chain.messages).toHaveLength(1)
 	})
 
-	it('parses a Uint8Array input', () => {
-		const bytes = readFixture('test.msg')
-		const reader = createMSGReader(bytes)
+	it('parses an .eml input into a working MSGInterface', () => {
+		const text = 'Subject: Hello\r\n\r\nBody text'
+		const bytes = new TextEncoder().encode(text)
+		const result = createMSG({ bytes, name: 'message.eml' })
 
-		const data = reader.parse()
-		expect(data.kind).toBe('msg')
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) throw new Error('unreachable')
+		expect(result.value.chain.format).toBe('eml')
+		expect(result.value.chain.messages[0]?.subject).toBe('Hello')
+		expect(result.value.fields).toBeUndefined()
 	})
 
-	it('parses an ArrayBuffer input', () => {
+	it('threads an { encoding } option through to .options', () => {
 		const bytes = readFixture('test.msg')
-		const buffer = new ArrayBuffer(bytes.byteLength)
-		new Uint8Array(buffer).set(bytes)
-		const reader = createMSGReader(buffer)
+		const result = createMSG(bytes, { encoding: 'latin1' })
 
-		const data = reader.parse()
-		expect(data.kind).toBe('msg')
-	})
-
-	it('threads an { encoding } option through to non-Unicode string decoding', () => {
-		const bytes = readFixture('test.msg')
-		const defaultReader = createMSGReader(bytes)
-		const latin1Reader = createMSGReader(bytes, { encoding: 'latin1' })
-
-		const defaultData = defaultReader.parse()
-		const latin1Data = latin1Reader.parse()
-
-		expect(defaultData.kind).toBe('msg')
-		expect(latin1Data.kind).toBe('msg')
+		expect(isSuccess(result)).toBe(true)
+		if (!isSuccess(result)) throw new Error('unreachable')
+		expect(result.value.options).toEqual({ encoding: 'latin1' })
 	})
 })
 
-// createMSGBurner — factory returns a working MSGBurnerInterface capable of
-// burning a minimal entry list into a valid CFB binary.
+describe('createMSG — failure', () => {
+	it('never throws on malformed input — returns a Failure carrying an MSGError', () => {
+		const bytes = new TextEncoder().encode('not a compound file at all')
+		const result = createMSG(bytes)
 
-describe('createMSGBurner', () => {
-	it('returns an instance of MSGBurner', () => {
-		const burner = createMSGBurner()
-
-		expect(burner).toBeInstanceOf(MSGBurner)
+		expect(isFailure(result)).toBe(true)
+		if (!isFailure(result)) throw new Error('unreachable')
+		expect(isMSGError(result.error)).toBe(true)
+		if (!isMSGError(result.error)) throw new Error('unreachable')
+		expect(result.error.code).toBe('UNSUPPORTED')
 	})
 
-	it('burns a minimal entry list (root only) into a CFB binary', () => {
-		const burner = createMSGBurner()
+	it('never throws on an empty input', () => {
+		const result = createMSG(new Uint8Array(0))
 
-		const binary = burner.burn([
-			{
-				name: 'Root Entry',
-				type: 5,
-				children: [],
-				length: 0,
-			},
-		])
-
-		expect(binary).toBeInstanceOf(Uint8Array)
-		expect(binary.length).toBeGreaterThan(0)
-	})
-
-	it('burns a minimal entry list with one document stream child', () => {
-		const burner = createMSGBurner()
-		const content = new Uint8Array([1, 2, 3, 4])
-
-		const binary = burner.burn([
-			{
-				name: 'Root Entry',
-				type: 5,
-				children: [1],
-				length: 0,
-			},
-			{
-				name: 'stream',
-				type: 2,
-				length: content.length,
-				binaryProvider: () => content,
-			},
-		])
-
-		expect(binary).toBeInstanceOf(Uint8Array)
-		expect(binary.length).toBeGreaterThan(0)
-	})
-})
-
-// createEmailParser — factory returns a working EmailParserInterface with
-// default options, and threads an explicit encoding through to `.options`.
-
-describe('createEmailParser', () => {
-	it('returns an instance of EmailParser', () => {
-		const parser = createEmailParser()
-
-		expect(parser).toBeInstanceOf(EmailParser)
-	})
-
-	it('exposes default options when none are given', () => {
-		const parser = createEmailParser()
-
-		expect(parser.options).toEqual({})
-	})
-
-	it('exposes an explicit { encoding } option via .options', () => {
-		const parser = createEmailParser({ encoding: 'latin1' })
-
-		expect(parser.options).toEqual({ encoding: 'latin1' })
-	})
-
-	it('parses with a working parser instance', () => {
-		const parser = createEmailParser()
-		const bytes = readFixture('test.msg')
-
-		const result = parser.parse({ bytes, name: 'message.msg' })
-		expect(result.success).toBe(true)
+		expect(isFailure(result)).toBe(true)
+		if (!isFailure(result)) throw new Error('unreachable')
+		expect(isMSGError(result.error)).toBe(true)
 	})
 })

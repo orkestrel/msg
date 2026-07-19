@@ -1,5 +1,3 @@
-import type { MSGError } from './errors.js'
-
 // === Result Pattern
 
 /**
@@ -128,26 +126,6 @@ export interface MSGBurnerLiteEntry {
 	firstSector: number
 	readonly mini: boolean
 	red: boolean
-}
-
-/**
- * Public interface for the CFB binary writer.
- * Reconstitutes a flat list of entry descriptors into a valid
- * Compound Binary File (CFB) byte stream.
- *
- * @remarks
- * - `burn` — write the entries to a CFB binary
- */
-export interface MSGBurnerInterface {
-	/**
-	 * Write the entries to a CFB binary.
-	 *
-	 * @param entries - Flat CFB entry descriptor list, root storage at index 0
-	 * @returns Complete CFB byte stream
-	 * @throws {@link MSGError} with code `BURN` when the entry list cannot be
-	 * reconstituted into a valid CFB structure
-	 */
-	burn(entries: readonly MSGBurnerEntry[]): Uint8Array
 }
 
 /**
@@ -297,53 +275,6 @@ export interface MSGAttachment {
 	readonly content: Uint8Array
 }
 
-/**
- * Configuration for creating an MSGReader.
- *
- * @remarks
- * - `encoding` — encoding for non-Unicode (PT_STRING8) strings (default `'windows-1252'`)
- */
-export interface MSGReaderOptions {
-	readonly encoding?: MSGEncoding
-}
-
-/**
- * Public interface for parsing Microsoft Outlook .msg files.
- *
- * @remarks
- * - `parse` — parse the MSG file and return extracted field data
- * - `attachment` — read attachment binary content by index
- * - `burn` — rebuild the parsed MSG as a standalone CFB/.msg binary
- */
-export interface MSGReaderInterface {
-	/**
-	 * Parse the MSG file and return extracted field data.
-	 *
-	 * @returns Root message field data with nested attachments and recipients
-	 * @throws {@link MSGError} with code `UNSUPPORTED`, `MALFORMED`, `CYCLE`,
-	 * or `RANGE` when the compound file cannot be parsed
-	 */
-	parse(): MSGFieldData
-
-	/**
-	 * Read attachment binary content by index.
-	 *
-	 * @param index - Zero-based index into the parsed attachment list
-	 * @returns File name and raw binary content
-	 * @throws {@link MSGError} with code `RANGE` when the index is out of bounds
-	 */
-	attachment(index: number): MSGAttachment
-
-	/**
-	 * Rebuild the parsed MSG as a standalone CFB/.msg binary.
-	 *
-	 * @returns Complete CFB byte stream
-	 * @throws {@link MSGError} with code `BURN` when the parsed structure
-	 * cannot be reconstituted
-	 */
-	burn(): Uint8Array
-}
-
 // === EmailParser
 
 /**
@@ -443,33 +374,54 @@ export interface EmailInput {
 	readonly mime?: string
 }
 
+// === MSG
+
 /**
- * Configuration for creating an EmailParser.
+ * Raw input accepted by {@link createMSG}: binary MSG bytes or an
+ * {@link EmailInput} for EML/MSG email parsing.
+ */
+export type MSGInput = Uint8Array | ArrayBuffer | EmailInput
+
+/**
+ * Configuration for creating an {@link MSGInterface}.
  *
  * @remarks
- * - `encoding` — encoding for decoding MIME part bodies (default `'utf-8'`)
+ * - `encoding` — encoding for non-Unicode strings and MIME part bodies (default `'windows-1252'`)
  */
-export interface EmailParserOptions {
+export interface MSGOptions {
 	readonly encoding?: MSGEncoding
 }
 
 /**
- * Public interface for parsing email files into structured chains.
+ * Public interface for a parsed MSG/EML file.
  *
  * @remarks
- * - `parse` — parse an EmailInput into an EmailChain result
- * - `options` — current parser configuration
+ * - `options` — configuration used to parse this instance
+ * - `chain` — the parsed email chain (format available via `chain.format`)
+ * - `fields` — MSG field data, or `undefined` when the parsed format is `'eml'`
+ * - `attachment` — read attachment binary content by index
+ * - `burn` — rebuild the parsed MSG as a standalone CFB/.msg binary
  */
-export interface EmailParserInterface {
-	/**
-	 * Parse raw email bytes into a structured chain.
-	 *
-	 * @param input - Raw bytes plus optional name/MIME hints
-	 * @returns A {@link Success} wrapping the parsed {@link EmailChain}, or a
-	 * {@link Failure} wrapping an {@link MSGError} (code `UNSUPPORTED` when
-	 * the format cannot be determined, `MALFORMED` when parsing fails)
-	 */
-	parse(input: EmailInput): Result<EmailChain, MSGError>
+export interface MSGInterface {
+	readonly options: MSGOptions
+	readonly chain: EmailChain
+	readonly fields: MSGFieldData | undefined
 
-	readonly options: EmailParserOptions
+	/**
+	 * Read attachment binary content by index.
+	 *
+	 * @param index - Zero-based index into the parsed attachment list
+	 * @returns File name and raw binary content
+	 * @throws {@link MSGError} with code `RANGE` when the index is out of bounds
+	 */
+	attachment(index: number): MSGAttachment
+
+	/**
+	 * Rebuild the parsed MSG as a standalone CFB/.msg binary.
+	 *
+	 * @returns Complete CFB byte stream
+	 * @throws {@link MSGError} with code `BURN` when the parsed structure
+	 * cannot be reconstituted
+	 */
+	burn(): Uint8Array
 }
