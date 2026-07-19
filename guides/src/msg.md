@@ -5,9 +5,10 @@
 > format eagerly (constructor throws a typed `MSGError` on malformed or
 > unsupported input) into a structured `chain` (`EmailChain`), and — for
 > `.msg` input — exposes the raw MAPI field tree (`fields`) plus
-> `attachment`/`burn` access. `createMSG` is the total, NEVER-throwing dual
-> of `new MSG()`: it returns a `Result<MSGInterface, MSGError>` instead of
-> throwing. A pure-ES encoding layer (Base64, UTF-8, Latin-1, Windows-1252,
+> `attachment`/`burn` access. `createMSG` is the `Result`-returning dual
+> of `new MSG()`: every parse failure surfaces as a `Failure<MSGError>`
+> instead of throwing (unexpected non-`MSGError` errors still propagate). A
+> pure-ES encoding layer (Base64, UTF-8, Latin-1, Windows-1252,
 > quoted-printable, RFC 2047 encoded words) and the CFB sector/directory
 > machinery (`parsers.ts` / `helpers.ts`, incl. `burnCFB`) back both formats
 > without a `TextDecoder` dependency, so the whole surface stays usable in
@@ -18,8 +19,9 @@
 
 Parse a raw file's bytes without knowing its format ahead of time — `.eml` or
 `.msg` — and narrow the `Result` before touching the parsed chain. `createMSG`
-never throws; reach for `new MSG()` directly when a thrown `MSGError` is the
-desired control flow instead:
+surfaces every parse failure as a `Failure<MSGError>` rather than throwing;
+reach for `new MSG()` directly when a thrown `MSGError` is the desired
+control flow instead:
 
 ```ts
 import { createMSG, isSuccess } from '@src/core'
@@ -330,9 +332,9 @@ msg.fields // undefined for 'eml' input; MSGFieldData for 'msg' input
 
 From [`factories.ts`](../../src/core/factories.ts).
 
-| Factory     | Kind     | Signature                                                                   | Behavior                                                                                                                                                             |
-| ----------- | -------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createMSG` | function | `(input: MSGInput, options?: MSGOptions) => Result<MSGInterface, MSGError>` | Creates an `MSGInterface` for the given `.eml`/`.msg` input. NEVER throws — unlike `new MSG()`, every parse failure surfaces as a `Failure` carrying the `MSGError`. |
+| Factory     | Kind     | Signature                                                                   | Behavior                                                                                                                                                                                                                    |
+| ----------- | -------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createMSG` | function | `(input: MSGInput, options?: MSGOptions) => Result<MSGInterface, MSGError>` | Creates an `MSGInterface` for the given `.eml`/`.msg` input. Unlike `new MSG()`, every parse failure surfaces as a `Failure` carrying the `MSGError` instead of throwing; unexpected non-`MSGError` errors still propagate. |
 
 ```ts
 import { createMSG, isSuccess } from '@src/core'
@@ -381,7 +383,7 @@ A caller extracting an embedded `.msg` attachment and burning it standalone goes
 ## Tests
 
 - [`tests/src/core/MSG.test.ts`](../../tests/src/core/MSG.test.ts) — construction (`.eml` / `.msg` / malformed input), `chain`, `fields`, `attachment`, `burn`, and the embedded-`.msg` extraction path.
-- [`tests/src/core/factories.test.ts`](../../tests/src/core/factories.test.ts) — `createMSG`'s `Result` contract (`Success`/`Failure`, never throws).
+- [`tests/src/core/factories.test.ts`](../../tests/src/core/factories.test.ts) — `createMSG`'s `Result` contract (`Success`/`Failure`, with parse failures surfaced as `Failure<MSGError>` rather than thrown).
 - [`tests/src/core/parsers.test.ts`](../../tests/src/core/parsers.test.ts) — `isMSGFile` / `decodeUTF8` / `detectFormat` / `parseMIMEPart` / `extractMessage` / `extractMessageFromMSG`, incl. `MIME_MAX_DEPTH` cycle guarding.
 - [`tests/src/core/helpers.test.ts`](../../tests/src/core/helpers.test.ts) — the `Result` constructors/guards, CFB byte/string/UUID readers, MIME/text codecs, and `burnCFB`.
 - [`tests/src/core/validators.test.ts`](../../tests/src/core/validators.test.ts) — `isEmailAttachment` / `isEmailMessage` / `isEmailChain` soundness on well-formed and malformed input.

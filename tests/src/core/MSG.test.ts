@@ -175,6 +175,23 @@ describe('MSG — burn() round-trip', () => {
 			)
 		},
 	)
+
+	it('preserves each attachment name and content bytes through burn() + re-parse for attachmentFiles.msg', () => {
+		const original = new MSG(toArrayBuffer(readFixture('attachmentFiles.msg')))
+		const burned = original.burn()
+		const reparsed = new MSG(toArrayBuffer(burned))
+
+		const originalCount = original.fields?.attachments?.length ?? 0
+		for (let i = 0; i < originalCount; i++) {
+			const originalAttachment = original.attachment(i)
+			const reparsedAttachment = reparsed.attachment(i)
+			expect(reparsedAttachment.fileName).toBe(originalAttachment.fileName)
+			expect(reparsedAttachment.content.length).toBe(originalAttachment.content.length)
+			expect(Array.from(reparsedAttachment.content)).toStrictEqual(
+				Array.from(originalAttachment.content),
+			)
+		}
+	})
 })
 
 // === encoding option
