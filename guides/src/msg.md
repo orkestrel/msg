@@ -24,7 +24,7 @@ reach for `new MSG()` directly when a thrown `MSGError` is the desired
 control flow instead:
 
 ```ts
-import { createMSG, isSuccess } from '@src/core'
+import { createMSG, isSuccess } from '@orkestrel/msg'
 
 const result = createMSG({ bytes, name: 'message.eml' })
 if (isSuccess(result)) {
@@ -146,7 +146,7 @@ From [`errors.ts`](../../src/core/errors.ts) — every MSG/EML parsing or burnin
 | `isMSGError` | function | `(value: unknown) => value is MSGError` | Narrows an unknown caught (or `Failure.error`) value to an `MSGError`.                                                     |
 
 ```ts
-import { isMSGError, MSGError } from '@src/core'
+import { isMSGError, MSGError } from '@orkestrel/msg'
 
 try {
 	throw new MSGError('MALFORMED', 'bad input')
@@ -216,8 +216,8 @@ import {
 	formatEmailAddress,
 	inferExtension,
 	burnCFB,
-} from '@src/core'
-import type { MSGBurnerEntry } from '@src/core'
+} from '@orkestrel/msg'
+import type { MSGBurnerEntry } from '@orkestrel/msg'
 
 isRecord({}) // true
 removeTrailingNull('abc\0def') // 'abc'
@@ -267,8 +267,8 @@ import {
 	parseMIMEPart,
 	extractMessage,
 	extractMessageFromMSG,
-} from '@src/core'
-import type { MSGFieldData, MSGAttachment } from '@src/core'
+} from '@orkestrel/msg'
+import type { MSGFieldData, MSGAttachment } from '@orkestrel/msg'
 
 detectFormat('message.eml', undefined) // 'eml'
 decodeUTF8(new Uint8Array([65])) // 'A'
@@ -298,7 +298,7 @@ From-unknown structural guards from [`validators.ts`](../../src/core/validators.
 | `isEmailChain`      | function | `EmailChain`      | Total from-unknown guard: `{ format, messages }`, `messages` recursively validated via `isEmailMessage`.                                            |
 
 ```ts
-import { isEmailAttachment, isEmailMessage, isEmailChain } from '@src/core'
+import { isEmailAttachment, isEmailMessage, isEmailChain } from '@orkestrel/msg'
 
 isEmailAttachment({ name: 'a.txt', mimeType: 'text/plain', size: 0, bytes: new Uint8Array() }) // true
 isEmailMessage({
@@ -319,7 +319,7 @@ isEmailChain({ format: 'eml', messages: [] }) // true
 The implementing class of `MSGInterface`, from [`MSG.ts`](../../src/core/MSG.ts). Construction is eager and total-or-throw: `new MSG(input, options?)` fully parses the input — walking the CFB sector/directory chains directly with `DataView` for `.msg` (every offset bounds-checked, every chain cycle-guarded), or running the pure-ES MIME parser for `.eml` — or throws a typed `MSGError` (`UNSUPPORTED` for an unrecognized format, `MALFORMED`/`CYCLE`/`RANGE` for a structurally invalid one) rather than a raw `RangeError`. `chain` exposes the parsed `EmailChain` uniformly for both formats (`chain.format` distinguishes them); `fields` exposes the raw MAPI field tree, present only for `'msg'` input. Two internal paths stay distinct: `attachment()` serves embedded-`.msg` extraction through `#innerMSGBurners`, while `burn()` rebuilds the TOP-LEVEL parsed message from `#properties`/`#bigBlockTable` — neither is ever rewired into the other. See [`## Methods`](#methods) for its public call-signature surface.
 
 ```ts
-import { MSG } from '@src/core'
+import { MSG } from '@orkestrel/msg'
 
 const msg = new MSG({ bytes, name: 'message.eml' })
 msg.options // {} when not configured; the encoding default is applied at read time
@@ -337,7 +337,7 @@ From [`factories.ts`](../../src/core/factories.ts).
 | `createMSG` | function | `(input: MSGInput, options?: MSGOptions) => Result<MSGInterface, MSGError>` | Creates an `MSGInterface` for the given `.eml`/`.msg` input. Unlike `new MSG()`, every parse failure surfaces as a `Failure` carrying the `MSGError` instead of throwing; unexpected non-`MSGError` errors still propagate. |
 
 ```ts
-import { createMSG, isSuccess } from '@src/core'
+import { createMSG, isSuccess } from '@orkestrel/msg'
 
 const result = createMSG(bytes)
 if (isSuccess(result)) {
@@ -357,7 +357,7 @@ The public methods of `MSGInterface` (AGENTS §22). `options`, `chain`, and `fie
 | `burn`       | `Uint8Array`    | Rebuilds the parsed TOP-LEVEL `.msg` as a standalone CFB binary, reading from `#properties`/`#bigBlockTable`. Throws `MSGError` (`BURN`) when the parsed structure (`.eml` input, or a missing root entry) cannot be reconstituted.         |
 
 ```ts
-import { createMSG, isSuccess } from '@src/core'
+import { createMSG, isSuccess } from '@orkestrel/msg'
 
 const result = createMSG(bytes) // Uint8Array of a .msg file
 if (isSuccess(result)) {
