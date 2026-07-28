@@ -1,34 +1,7 @@
-import type {
-	Result,
-	Success,
-	Failure,
-	EmailFormat,
-	MIMEHeader,
-	MSGEncoding,
-	MSGBurnerEntry,
-	MSGBurnerLiteEntry,
-} from './types.js'
+import type { Result, Success, Failure, EmailFormat, MIMEHeader, MSGEncoding } from './types.js'
 import { MSGError } from './errors.js'
 import { decodeUTF8 } from './parsers.js'
-import {
-	MIME_EXTENSIONS,
-	WINDOWS_1252_HIGH,
-	MSG_FILE_HEADER,
-	MSG_TYPE_DIRECTORY,
-	MSG_TYPE_DOCUMENT,
-	MSG_END_OF_CHAIN,
-	MSG_UNUSED_BLOCK,
-	MSG_BURNER_SECTOR_SIZE,
-	MSG_BURNER_MINI_SECTOR_SIZE,
-	MSG_BURNER_MINI_STREAM_CUTOFF,
-	MSG_BURNER_INTS_PER_SECTOR,
-	MSG_BURNER_DIFAT_HEADER_SLOTS,
-	MSG_BURNER_DIR_ENTRY_SIZE,
-	MSG_BURNER_FAT_SECTOR_MARKER,
-	MSG_BURNER_DIFAT_SECTOR_MARKER,
-	MSG_BURNER_ROOT_CLSID,
-	MSG_BURNER_NAME_MAX,
-} from './constants.js'
+import { MIME_EXTENSIONS, WINDOWS_1252_HIGH } from './constants.js'
 
 // === Result Helpers
 
@@ -187,7 +160,7 @@ export function toHexLower(value: number, length: number): string {
 	let result = ''
 	let remaining = value >>> 0
 	for (let i = 0; i < length; i++) {
-		result = hex[remaining & 15] + result
+		result = hex.charAt(remaining & 15) + result
 		remaining = remaining >>> 4
 	}
 	return result
@@ -201,30 +174,19 @@ export function toHexLower(value: number, length: number): string {
  * @returns UUID string in lowercase
  */
 export function msftUUIDStringify(data: Uint8Array, offset: number): string {
-	const hex = '0123456789abcdef'
-	const b = (i: number) => hex[(data[offset + i] >> 4) & 15] + hex[data[offset + i] & 15]
-	return (
-		b(3) +
-		b(2) +
-		b(1) +
-		b(0) +
-		'-' +
-		b(5) +
-		b(4) +
-		'-' +
-		b(7) +
-		b(6) +
-		'-' +
-		b(8) +
-		b(9) +
-		'-' +
-		b(10) +
-		b(11) +
-		b(12) +
-		b(13) +
-		b(14) +
-		b(15)
-	)
+	const order = [3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15]
+	let result = ''
+	for (const [index, relative] of order.entries()) {
+		if (index === 4 || index === 6 || index === 8 || index === 10) result += '-'
+		const byte = data[offset + relative]
+		if (byte === undefined) {
+			throw new MSGError('RANGE', 'UUID byte offset is out of range', {
+				offset: offset + relative,
+			})
+		}
+		result += toHexLower(byte, 2)
+	}
+	return result
 }
 
 // === MSGBurner Helpers
@@ -371,8 +333,8 @@ export function encodeUTF8(text: string): Uint8Array {
  */
 export function decodeLatin1(bytes: Uint8Array): string {
 	let result = ''
-	for (let i = 0; i < bytes.length; i++) {
-		result += String.fromCharCode(bytes[i])
+	for (const byte of bytes) {
+		result += String.fromCharCode(byte)
 	}
 	return result
 }
@@ -391,10 +353,13 @@ export function decodeLatin1(bytes: Uint8Array): string {
  */
 export function decodeWindows1252(bytes: Uint8Array): string {
 	let result = ''
-	for (let i = 0; i < bytes.length; i++) {
-		const byte = bytes[i]
+	for (const byte of bytes) {
 		if (byte >= 0x80 && byte <= 0x9f) {
-			result += String.fromCodePoint(WINDOWS_1252_HIGH[byte - 0x80])
+			const codePoint = WINDOWS_1252_HIGH[byte - 0x80]
+			if (codePoint === undefined) {
+				throw new MSGError('MALFORMED', 'Windows-1252 mapping is incomplete', { byte })
+			}
+			result += String.fromCodePoint(codePoint)
 		} else {
 			result += String.fromCharCode(byte)
 		}
@@ -634,386 +599,4 @@ export function inferExtension(mimeType?: string, fileName?: string): string {
 	}
 
 	return '.bin'
-}
-
-// === MSGBurner (CFB writer)
-
-/**
- * Reconstitute a valid CFB (Compound Binary File) from a flat list of
- * {@link MSGBurnerEntry} descriptors — root storage at index 0, its
- * children reachable through `children` indices.
- *
- * @remarks
- * Builds a red-black directory tree, allocates FAT/mini-FAT/DIFAT
- * sectors, then writes the header, directory entries, and stream data
- * into a single binary. Used to extract embedded `.msg` attachments as
- * standalone CFB files.
- *
- * @param entries - Flat entry list starting with Root Entry at index 0
- * @returns Complete CFB binary as Uint8Array
- * @throws {@link MSGError} with code `BURN` when an entry name exceeds
- * the {@link MSG_BURNER_NAME_MAX} UTF-16 code unit limit the CFB directory entry format allows
- */
-export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
-	const liteEntries: MSGBurnerLiteEntry[] = entries.map((entry) => ({
-		entry,
-		left: -1,
-		right: -1,
-		child: -1,
-		firstSector: 0,
-		mini: entry.type === MSG_TYPE_DOCUMENT && entry.length < MSG_BURNER_MINI_STREAM_CUTOFF,
-		red: false,
-	}))
-	const fat: number[] = []
-	const miniFat: number[] = []
-
-	const allocateFat = (count: number): number => {
-		const first = fat.length
-		for (let i = 0; i < count; i++) {
-			const next = i + 1 === count ? MSG_END_OF_CHAIN : first + i + 1
-			fat.push(next)
-		}
-		return first
-	}
-
-	const allocateFatAs = (count: number, value: number): number => {
-		const first = fat.length
-		for (let i = 0; i < count; i++) {
-			fat.push(value)
-		}
-		return first
-	}
-
-	const allocateMiniFat = (count: number): number => {
-		const first = miniFat.length
-		for (let i = 0; i < count; i++) {
-			const next = i + 1 === count ? MSG_END_OF_CHAIN : first + i + 1
-			miniFat.push(next)
-		}
-		return first
-	}
-
-	function buildTree(dirIndex: number): void {
-		const liteEntry = liteEntries[dirIndex]
-		const children = liteEntry.entry.children
-		if (children === undefined || children.length === 0) return
-
-		const sorted = children
-			.slice()
-			.sort((a, b) => compareCFBName(liteEntries[a].entry.name, liteEntries[b].entry.name))
-
-		const mid = Math.floor(sorted.length / 2)
-		const rootIndex = sorted[mid]
-		const rootEntry = liteEntries[rootIndex]
-		rootEntry.red = false
-		rootEntry.left = splitTree(sorted, 0, mid, true)
-		rootEntry.right = splitTree(sorted, mid + 1, sorted.length, true)
-		liteEntry.child = rootIndex
-
-		for (let i = 0; i < sorted.length; i++) {
-			const idx = sorted[i]
-			if (liteEntries[idx].entry.type === MSG_TYPE_DIRECTORY) {
-				buildTree(idx)
-			}
-		}
-	}
-
-	function splitTree(sorted: number[], start: number, end: number, red: boolean): number {
-		if (start >= end) return -1
-		const mid = Math.floor((start + end) / 2)
-		const entryIndex = sorted[mid]
-		const entry = liteEntries[entryIndex]
-		entry.red = red
-		entry.left = splitTree(sorted, start, mid, !red)
-		entry.right = splitTree(sorted, mid + 1, end, !red)
-		return entryIndex
-	}
-
-	function buildDifat(
-		difat1: number[],
-		difat2: number[],
-		numFatSectors: number,
-		firstFatSector: number,
-		firstDifatSector: number,
-	): void {
-		let x = 0
-		for (; x < MSG_BURNER_DIFAT_HEADER_SLOTS && x < numFatSectors; x++) {
-			difat1.push(firstFatSector + x)
-		}
-		let nextDifatSector = firstDifatSector + 1
-		for (; x < numFatSectors; x++) {
-			difat2.push(firstFatSector + x)
-			if ((difat2.length & 127) === 127) {
-				difat2.push(nextDifatSector)
-				nextDifatSector++
-			}
-		}
-		while (difat2.length > 0 && (difat2.length & 127) !== 0) {
-			const remain = difat2.length & 127
-			difat2.push(remain === 127 ? MSG_END_OF_CHAIN : MSG_UNUSED_BLOCK)
-		}
-	}
-
-	function writeHeader(
-		view: DataView,
-		bytes: Uint8Array,
-		numFatSectors: number,
-		entriesFirstSector: number,
-		firstMiniFatSector: number,
-		numMiniFatSectors: number,
-		firstDifatSector: number,
-		numDifatSectors: number,
-		difat1: number[],
-	): void {
-		bytes.set(MSG_FILE_HEADER, 0)
-		view.setUint16(0x18, 0x3e, true)
-		view.setUint16(0x1a, 0x03, true)
-		view.setUint16(0x1c, 0xfffe, true)
-		view.setUint16(0x1e, 9, true)
-		view.setUint16(0x20, 6, true)
-
-		view.setInt32(0x2c, numFatSectors, true)
-		view.setInt32(0x30, entriesFirstSector, true)
-
-		view.setInt32(0x38, MSG_BURNER_MINI_STREAM_CUTOFF, true)
-		view.setInt32(0x3c, firstMiniFatSector, true)
-		view.setInt32(0x40, numMiniFatSectors, true)
-		view.setInt32(0x44, firstDifatSector, true)
-		view.setInt32(0x48, numDifatSectors, true)
-
-		let offset = 0x4c
-		for (let i = 0; i < difat1.length; i++) {
-			view.setInt32(offset, difat1[i], true)
-			offset += 4
-		}
-		for (let i = difat1.length; i < MSG_BURNER_DIFAT_HEADER_SLOTS; i++) {
-			view.setInt32(offset, MSG_UNUSED_BLOCK, true)
-			offset += 4
-		}
-	}
-
-	function writeDirectoryEntries(
-		view: DataView,
-		bytes: Uint8Array,
-		entriesFirstSector: number,
-		bytesMiniFat: number,
-	): void {
-		for (let x = 0; x < liteEntries.length; x++) {
-			const le = liteEntries[x]
-			const pos = MSG_BURNER_SECTOR_SIZE * (1 + entriesFirstSector) + MSG_BURNER_DIR_ENTRY_SIZE * x
-
-			// CFB caps a directory entry name at MSG_BURNER_NAME_MAX UTF-16 code
-			// units + a NUL terminator inside the fixed 64-byte name field
-			// (offsets 0x00-0x3f). A longer name would overrun into the
-			// type/color/sibling fields that follow, so validate before
-			// writing any name bytes.
-			const name = le.entry.name
-			if (name.length > MSG_BURNER_NAME_MAX) {
-				throw new MSGError(
-					'BURN',
-					`directory entry name exceeds ${MSG_BURNER_NAME_MAX} characters`,
-					{
-						name,
-					},
-				)
-			}
-
-			for (let i = 0; i < name.length; i++) {
-				view.setUint16(pos + i * 2, name.charCodeAt(i), true)
-			}
-			// NUL terminator + recorded byte length: (chars + 1) UTF-16 units.
-			view.setUint16(pos + name.length * 2, 0, true)
-
-			view.setUint16(pos + 0x40, (name.length + 1) * 2, true)
-			bytes[pos + 0x42] = le.entry.type
-			bytes[pos + 0x43] = le.red ? 0 : 1
-			view.setInt32(pos + 0x44, le.left, true)
-			view.setInt32(pos + 0x48, le.right, true)
-			view.setInt32(pos + 0x4c, le.child, true)
-
-			if (x === 0) {
-				bytes.set(MSG_BURNER_ROOT_CLSID, pos + 0x50)
-			}
-
-			const length = x === 0 ? bytesMiniFat : le.entry.length
-			const firstSector =
-				length !== 0 ? le.firstSector : le.entry.type === MSG_TYPE_DIRECTORY ? 0 : MSG_END_OF_CHAIN
-
-			view.setInt32(pos + 0x74, firstSector, true)
-			view.setInt32(pos + 0x78, length, true)
-		}
-	}
-
-	function writeLargeStreams(bytes: Uint8Array): void {
-		for (let i = 0; i < liteEntries.length; i++) {
-			const le = liteEntries[i]
-			if (
-				le.entry.type === MSG_TYPE_DOCUMENT &&
-				!le.mini &&
-				le.entry.binaryProvider !== undefined
-			) {
-				const data = le.entry.binaryProvider()
-				bytes.set(data, MSG_BURNER_SECTOR_SIZE * (1 + le.firstSector))
-			}
-		}
-	}
-
-	function writeMiniStreams(bytes: Uint8Array, firstMiniDataSector: number): void {
-		if (firstMiniDataSector === MSG_END_OF_CHAIN) return
-
-		for (let i = 0; i < liteEntries.length; i++) {
-			const le = liteEntries[i]
-			if (le.entry.type === MSG_TYPE_DOCUMENT && le.mini && le.entry.binaryProvider !== undefined) {
-				const data = le.entry.binaryProvider()
-				bytes.set(
-					data,
-					MSG_BURNER_SECTOR_SIZE * (1 + firstMiniDataSector) +
-						MSG_BURNER_MINI_SECTOR_SIZE * le.firstSector,
-				)
-			}
-		}
-	}
-
-	function writeMiniFat(view: DataView, firstMiniFatSector: number): void {
-		if (firstMiniFatSector === MSG_END_OF_CHAIN) return
-
-		let offset = MSG_BURNER_SECTOR_SIZE * (1 + firstMiniFatSector)
-		for (let i = 0; i < miniFat.length; i++) {
-			view.setInt32(offset, miniFat[i], true)
-			offset += 4
-		}
-	}
-
-	function writeFat(view: DataView, firstFatSector: number): void {
-		while (fat.length % MSG_BURNER_INTS_PER_SECTOR !== 0) {
-			fat.push(MSG_UNUSED_BLOCK)
-		}
-
-		let offset = MSG_BURNER_SECTOR_SIZE * (1 + firstFatSector)
-		for (let i = 0; i < fat.length; i++) {
-			view.setInt32(offset, fat[i], true)
-			offset += 4
-		}
-	}
-
-	function writeDifat(
-		view: DataView,
-		difat2: number[],
-		firstDifatSector: number,
-		numDifatSectors: number,
-	): void {
-		if (numDifatSectors < 1) return
-
-		let offset = MSG_BURNER_SECTOR_SIZE * (1 + firstDifatSector)
-		for (let i = 0; i < difat2.length; i++) {
-			view.setInt32(offset, difat2[i], true)
-			offset += 4
-		}
-	}
-
-	buildTree(0)
-
-	// Allocate directory sectors
-	const dirSectorCount = sectorsNeeded(
-		MSG_BURNER_DIR_ENTRY_SIZE * liteEntries.length,
-		MSG_BURNER_SECTOR_SIZE,
-	)
-	const entriesFirstSector = allocateFat(dirSectorCount)
-
-	// Allocate large document streams
-	for (let i = 0; i < liteEntries.length; i++) {
-		const le = liteEntries[i]
-		if (le.entry.type === MSG_TYPE_DOCUMENT && !le.mini) {
-			le.firstSector =
-				le.entry.length === 0
-					? MSG_END_OF_CHAIN
-					: allocateFat(sectorsNeeded(le.entry.length, MSG_BURNER_SECTOR_SIZE))
-		}
-	}
-
-	// Allocate mini-stream document streams
-	for (let i = 0; i < liteEntries.length; i++) {
-		const le = liteEntries[i]
-		if (le.entry.type === MSG_TYPE_DOCUMENT && le.mini) {
-			le.firstSector =
-				le.entry.length === 0
-					? MSG_END_OF_CHAIN
-					: allocateMiniFat(sectorsNeeded(le.entry.length, MSG_BURNER_MINI_SECTOR_SIZE))
-		}
-	}
-
-	// Allocate mini-FAT sectors
-	const numMiniFatSectors = sectorsNeeded(4 * miniFat.length, MSG_BURNER_SECTOR_SIZE)
-	const firstMiniFatSector =
-		numMiniFatSectors !== 0 ? allocateFat(numMiniFatSectors) : MSG_END_OF_CHAIN
-
-	// Allocate mini-stream data sectors (root entry body)
-	const bytesMiniFat = MSG_BURNER_MINI_SECTOR_SIZE * miniFat.length
-	const firstMiniDataSector =
-		bytesMiniFat > 0
-			? allocateFat(sectorsNeeded(bytesMiniFat, MSG_BURNER_SECTOR_SIZE))
-			: MSG_END_OF_CHAIN
-
-	liteEntries[0].firstSector =
-		firstMiniDataSector === MSG_END_OF_CHAIN ? MSG_END_OF_CHAIN : firstMiniDataSector
-
-	// Allocate FAT sectors (self-referencing)
-	const estimatedFatSectors = Math.max(
-		1,
-		sectorsNeeded(
-			4 * (fat.length + Math.ceil(fat.length / MSG_BURNER_INTS_PER_SECTOR) + 1),
-			MSG_BURNER_SECTOR_SIZE,
-		),
-	)
-	const firstFatSector = allocateFatAs(estimatedFatSectors, MSG_BURNER_FAT_SECTOR_MARKER)
-	const numFatSectors = fat.length - firstFatSector
-
-	// Allocate DIFAT sectors
-	const numDifatSectors =
-		numFatSectors > MSG_BURNER_DIFAT_HEADER_SLOTS
-			? sectorsNeeded(
-					4 * Math.ceil(((numFatSectors - MSG_BURNER_DIFAT_HEADER_SLOTS) / 127) * 128),
-					MSG_BURNER_SECTOR_SIZE,
-				)
-			: 0
-	const firstDifatSector =
-		numDifatSectors !== 0
-			? allocateFatAs(numDifatSectors, MSG_BURNER_DIFAT_SECTOR_MARKER)
-			: MSG_END_OF_CHAIN
-
-	// Build the binary
-	const totalSize = MSG_BURNER_SECTOR_SIZE * (1 + fat.length)
-	const buffer = new ArrayBuffer(totalSize)
-	const view = new DataView(buffer)
-	const bytes = new Uint8Array(buffer)
-
-	// Pad mini-FAT to sector boundary
-	while (miniFat.length % MSG_BURNER_INTS_PER_SECTOR !== 0) {
-		miniFat.push(MSG_UNUSED_BLOCK)
-	}
-
-	// Build DIFAT arrays
-	const difat1: number[] = []
-	const difat2: number[] = []
-	buildDifat(difat1, difat2, numFatSectors, firstFatSector, firstDifatSector)
-
-	writeHeader(
-		view,
-		bytes,
-		numFatSectors,
-		entriesFirstSector,
-		firstMiniFatSector,
-		numMiniFatSectors,
-		firstDifatSector,
-		numDifatSectors,
-		difat1,
-	)
-	writeDirectoryEntries(view, bytes, entriesFirstSector, bytesMiniFat)
-	writeLargeStreams(bytes)
-	writeMiniStreams(bytes, firstMiniDataSector)
-	writeMiniFat(view, firstMiniFatSector)
-	writeFat(view, firstFatSector)
-	writeDifat(view, difat2, firstDifatSector, numDifatSectors)
-
-	return new Uint8Array(buffer)
 }

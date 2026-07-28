@@ -10,7 +10,7 @@
 > instead of throwing (unexpected non-`MSGError` errors still propagate). A
 > pure-ES encoding layer (Base64, UTF-8, Latin-1, Windows-1252,
 > quoted-printable, RFC 2047 encoded words) and the CFB sector/directory
-> machinery (`parsers.ts` / `helpers.ts`, incl. `burnCFB`) back both formats
+> machinery (`parsers.ts` / `helpers.ts` / `shapers.ts`) back both formats
 > without a `TextDecoder` dependency, so the whole surface stays usable in
 > the core's DOM/Node-free environment. Source: [`src/core`](../../src/core).
 > Surfaced through the `@src/core` barrel.
@@ -157,37 +157,36 @@ try {
 
 ### Helpers
 
-Pure, mostly-total leaves from [`helpers.ts`](../../src/core/helpers.ts) — the `Result` constructors/guards, the CFB byte/string/UUID readers `MSG.ts` composes, the MIME/text codecs `parsers.ts` composes, and `burnCFB`, the free-function CFB writer (mirroring `renderHTML`/`renderMarkdown`'s standalone-writer shape).
+Pure, mostly-total leaves from [`helpers.ts`](../../src/core/helpers.ts) — the `Result` constructors/guards, the CFB byte/string/UUID readers `MSG.ts` composes, and the MIME/text codecs `parsers.ts` composes.
 
-| Helper                | Kind     | Signature                                                           | Behavior                                                                                                                                                   |
-| --------------------- | -------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `success`             | function | `<T>(value: T) => Success<T>`                                       | Constructs a `Success` wrapping `value`.                                                                                                                   |
-| `failure`             | function | `<E>(error: E) => Failure<E>`                                       | Constructs a `Failure` wrapping `error`.                                                                                                                   |
-| `isSuccess`           | function | `<T, E>(result: Result<T, E>) => result is Success<T>`              | Narrows a `Result` to `Success`.                                                                                                                           |
-| `isFailure`           | function | `<T, E>(result: Result<T, E>) => result is Failure<E>`              | Narrows a `Result` to `Failure`.                                                                                                                           |
-| `isRecord`            | function | `(value: unknown) => value is Record<string, unknown>`              | `true` when `value` is a non-null, non-array object.                                                                                                       |
-| `removeTrailingNull`  | function | `(text: string) => string`                                          | Truncates `text` at its first `\0` character.                                                                                                              |
-| `readUTF16String`     | function | `(view: DataView, offset: number, charCount: number) => string`     | Reads a UTF-16LE string; throws `MSGError('MALFORMED')` when the range exceeds the view's bounds.                                                          |
-| `readANSIString`      | function | `(data: Uint8Array, encoding?: MSGEncoding) => string`              | Reads a non-Unicode (PT_STRING8) string via a pure-ES decoder, dispatching on `encoding`.                                                                  |
-| `fileTimeToUTCString` | function | `(low: number, high: number) => string`                             | Converts a Windows FILETIME (100-ns ticks since 1601, `BigInt`-precise) to a UTC date string.                                                              |
-| `toHexLower`          | function | `(value: number, length: number) => string`                         | Converts `value` to a zero-padded lowercase hex string of `length` digits.                                                                                 |
-| `msftUUIDStringify`   | function | `(data: Uint8Array, offset: number) => string`                      | Stringifies a mixed-endian Microsoft UUID starting at `offset` in `data`.                                                                                  |
-| `roundUpToMultiple`   | function | `(value: number, boundary: number) => number`                       | Rounds `value` up to the nearest multiple of `boundary` (a power of 2).                                                                                    |
-| `sectorsNeeded`       | function | `(bytes: number, sectorSize: number) => number`                     | Computes how many `sectorSize` sectors hold `bytes` (0 when `bytes <= 0`).                                                                                 |
-| `compareCFBName`      | function | `(a: string, b: string) => number`                                  | CFB-compliant directory name comparator — by UTF-16 length, then uppercased code points.                                                                   |
-| `decodeBase64`        | function | `(text: string) => Uint8Array`                                      | Decodes a Base64 string into raw bytes.                                                                                                                    |
-| `encodeUTF8`          | function | `(text: string) => Uint8Array`                                      | Encodes a string into UTF-8 bytes.                                                                                                                         |
-| `decodeLatin1`        | function | `(bytes: Uint8Array) => string`                                     | Decodes Latin-1 (ISO-8859-1) bytes into a string.                                                                                                          |
-| `decodeWindows1252`   | function | `(bytes: Uint8Array) => string`                                     | Decodes Windows-1252 bytes into a string, resolving the `0x80`-`0x9F` range via `WINDOWS_1252_HIGH`.                                                       |
-| `resolveEncoding`     | function | `(label: string \| undefined) => MSGEncoding`                       | Resolves a charset label to an `MSGEncoding`, falling back to `FALLBACK_CHARSET`'s encoding when unrecognized.                                             |
-| `isEmailFormat`       | function | `(value: unknown) => value is EmailFormat`                          | `true` when `value` is `'eml'` or `'msg'`.                                                                                                                 |
-| `parseMIMEHeaders`    | function | `(text: string) => ReadonlyMap<string, MIMEHeader>`                 | Parses an RFC 2822 / MIME header block, folding continuation lines.                                                                                        |
-| `decodeMIMEEncoding`  | function | `(body: string, encoding: string) => Uint8Array`                    | Decodes a MIME body (`base64` / `quoted-printable` / passthrough) to raw bytes; throws `MSGError('MALFORMED')` on invalid Base64.                          |
-| `decodeMIMEText`      | function | `(body: string, encoding: string, charset: string) => string`       | Decodes a MIME body to text via `decodeMIMEEncoding` + `resolveEncoding`.                                                                                  |
-| `decodeMIMEWords`     | function | `(text: string) => string`                                          | Decodes RFC 2047 encoded words (`=?charset?B/Q?...?=`) in a header value.                                                                                  |
-| `formatEmailAddress`  | function | `(name: string \| undefined, email: string \| undefined) => string` | Formats a display name + email into `"Name <email>"`, or whichever half is present.                                                                        |
-| `inferExtension`      | function | `(mimeType?: string, fileName?: string) => string`                  | Infers a file extension from a file name or MIME type, falling back to `.bin`.                                                                             |
-| `burnCFB`             | function | `(entries: readonly MSGBurnerEntry[]) => Uint8Array`                | Reconstitutes a valid CFB binary from a flat `MSGBurnerEntry` list (root at index 0); throws `MSGError('BURN')` when a name exceeds `MSG_BURNER_NAME_MAX`. |
+| Helper                | Kind     | Signature                                                           | Behavior                                                                                                                          |
+| --------------------- | -------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `success`             | function | `<T>(value: T) => Success<T>`                                       | Constructs a `Success` wrapping `value`.                                                                                          |
+| `failure`             | function | `<E>(error: E) => Failure<E>`                                       | Constructs a `Failure` wrapping `error`.                                                                                          |
+| `isSuccess`           | function | `<T, E>(result: Result<T, E>) => result is Success<T>`              | Narrows a `Result` to `Success`.                                                                                                  |
+| `isFailure`           | function | `<T, E>(result: Result<T, E>) => result is Failure<E>`              | Narrows a `Result` to `Failure`.                                                                                                  |
+| `isRecord`            | function | `(value: unknown) => value is Record<string, unknown>`              | `true` when `value` is a non-null, non-array object.                                                                              |
+| `removeTrailingNull`  | function | `(text: string) => string`                                          | Truncates `text` at its first `\0` character.                                                                                     |
+| `readUTF16String`     | function | `(view: DataView, offset: number, charCount: number) => string`     | Reads a UTF-16LE string; throws `MSGError('MALFORMED')` when the range exceeds the view's bounds.                                 |
+| `readANSIString`      | function | `(data: Uint8Array, encoding?: MSGEncoding) => string`              | Reads a non-Unicode (PT_STRING8) string via a pure-ES decoder, dispatching on `encoding`.                                         |
+| `fileTimeToUTCString` | function | `(low: number, high: number) => string`                             | Converts a Windows FILETIME (100-ns ticks since 1601, `BigInt`-precise) to a UTC date string.                                     |
+| `toHexLower`          | function | `(value: number, length: number) => string`                         | Converts `value` to a zero-padded lowercase hex string of `length` digits.                                                        |
+| `msftUUIDStringify`   | function | `(data: Uint8Array, offset: number) => string`                      | Stringifies a mixed-endian Microsoft UUID starting at `offset` in `data`.                                                         |
+| `roundUpToMultiple`   | function | `(value: number, boundary: number) => number`                       | Rounds `value` up to the nearest multiple of `boundary` (a power of 2).                                                           |
+| `sectorsNeeded`       | function | `(bytes: number, sectorSize: number) => number`                     | Computes how many `sectorSize` sectors hold `bytes` (0 when `bytes <= 0`).                                                        |
+| `compareCFBName`      | function | `(a: string, b: string) => number`                                  | CFB-compliant directory name comparator — by UTF-16 length, then uppercased code points.                                          |
+| `decodeBase64`        | function | `(text: string) => Uint8Array`                                      | Decodes a Base64 string into raw bytes.                                                                                           |
+| `encodeUTF8`          | function | `(text: string) => Uint8Array`                                      | Encodes a string into UTF-8 bytes.                                                                                                |
+| `decodeLatin1`        | function | `(bytes: Uint8Array) => string`                                     | Decodes Latin-1 (ISO-8859-1) bytes into a string.                                                                                 |
+| `decodeWindows1252`   | function | `(bytes: Uint8Array) => string`                                     | Decodes Windows-1252 bytes into a string, resolving the `0x80`-`0x9F` range via `WINDOWS_1252_HIGH`.                              |
+| `resolveEncoding`     | function | `(label: string \| undefined) => MSGEncoding`                       | Resolves a charset label to an `MSGEncoding`, falling back to `FALLBACK_CHARSET`'s encoding when unrecognized.                    |
+| `isEmailFormat`       | function | `(value: unknown) => value is EmailFormat`                          | `true` when `value` is `'eml'` or `'msg'`.                                                                                        |
+| `parseMIMEHeaders`    | function | `(text: string) => ReadonlyMap<string, MIMEHeader>`                 | Parses an RFC 2822 / MIME header block, folding continuation lines.                                                               |
+| `decodeMIMEEncoding`  | function | `(body: string, encoding: string) => Uint8Array`                    | Decodes a MIME body (`base64` / `quoted-printable` / passthrough) to raw bytes; throws `MSGError('MALFORMED')` on invalid Base64. |
+| `decodeMIMEText`      | function | `(body: string, encoding: string, charset: string) => string`       | Decodes a MIME body to text via `decodeMIMEEncoding` + `resolveEncoding`.                                                         |
+| `decodeMIMEWords`     | function | `(text: string) => string`                                          | Decodes RFC 2047 encoded words (`=?charset?B/Q?...?=`) in a header value.                                                         |
+| `formatEmailAddress`  | function | `(name: string \| undefined, email: string \| undefined) => string` | Formats a display name + email into `"Name <email>"`, or whichever half is present.                                               |
+| `inferExtension`      | function | `(mimeType?: string, fileName?: string) => string`                  | Infers a file extension from a file name or MIME type, falling back to `.bin`.                                                    |
 
 ```ts
 import {
@@ -215,9 +214,7 @@ import {
 	decodeMIMEText,
 	formatEmailAddress,
 	inferExtension,
-	burnCFB,
 } from '@orkestrel/msg'
-import type { MSGBurnerEntry } from '@orkestrel/msg'
 
 isRecord({}) // true
 removeTrailingNull('abc\0def') // 'abc'
@@ -241,6 +238,19 @@ const view = new DataView(new Uint8Array(4).buffer)
 readUTF16String(view, 0, 2) // ''
 fileTimeToUTCString(0, 0) // a UTC date string
 msftUUIDStringify(new Uint8Array(16), 0) // a UUID string
+```
+
+### Shapers
+
+The CFB value shaper from [`shapers.ts`](../../src/core/shapers.ts) compiles a flat, readonly entry graph into a standalone binary without mutating the caller's descriptors.
+
+| Shaper    | Kind     | Signature                                            | Behavior                                                                                                                                                                               |
+| --------- | -------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `burnCFB` | function | `(entries: readonly MSGBurnerEntry[]) => Uint8Array` | Reconstitutes a valid CFB binary from a flat `MSGBurnerEntry` list (root at index 0); throws `MSGError('BURN')` for an invalid/cyclic graph or a name exceeding `MSG_BURNER_NAME_MAX`. |
+
+```ts
+import { burnCFB } from '@orkestrel/msg'
+import type { MSGBurnerEntry } from '@orkestrel/msg'
 
 const entries: readonly MSGBurnerEntry[] = [{ name: 'Root Entry', type: 5, length: 0 }]
 burnCFB(entries) // Uint8Array — a standalone CFB binary
@@ -316,7 +326,7 @@ isEmailChain({ format: 'eml', messages: [] }) // true
 
 ### `MSG`
 
-The implementing class of `MSGInterface`, from [`MSG.ts`](../../src/core/MSG.ts). Construction is eager and total-or-throw: `new MSG(input, options?)` fully parses the input — walking the CFB sector/directory chains directly with `DataView` for `.msg` (every offset bounds-checked, every chain cycle-guarded), or running the pure-ES MIME parser for `.eml` — or throws a typed `MSGError` (`UNSUPPORTED` for an unrecognized format, `MALFORMED`/`CYCLE`/`RANGE` for a structurally invalid one) rather than a raw `RangeError`. `chain` exposes the parsed `EmailChain` uniformly for both formats (`chain.format` distinguishes them); `fields` exposes the raw MAPI field tree, present only for `'msg'` input. Two internal paths stay distinct: `attachment()` serves embedded-`.msg` extraction through `#innerMSGBurners`, while `burn()` rebuilds the TOP-LEVEL parsed message from `#properties`/`#bigBlockTable` — neither is ever rewired into the other. See [`## Methods`](#methods) for its public call-signature surface.
+The implementing class of `MSGInterface`, from [`MSG.ts`](../../src/core/MSG.ts). Construction is eager and total-or-throw: `new MSG(input, options?)` fully parses the input — walking the CFB sector/directory chains directly with `DataView` for `.msg` (every offset bounds-checked, every chain cycle-guarded), or running the pure-ES MIME parser for `.eml` — or throws a typed `MSGError` (`UNSUPPORTED` for an unrecognized format, `MALFORMED`/`CYCLE`/`RANGE` for a structurally invalid one) rather than a raw `RangeError`. `chain` exposes the parsed `EmailChain` uniformly for both formats (`chain.format` distinguishes them); `fields` exposes the raw MAPI field tree, present only for `'msg'` input. Two internal paths stay distinct: `attachment()` serves embedded-`.msg` extraction from its stored directory subtree, while `burn()` rebuilds the TOP-LEVEL parsed message from `#properties`/`#bigBlockTable` — neither is ever rewired into the other. See [`## Methods`](#methods) for its public call-signature surface.
 
 ```ts
 import { MSG } from '@orkestrel/msg'
@@ -351,10 +361,10 @@ The public methods of `MSGInterface` (AGENTS §22). `options`, `chain`, and `fie
 
 #### `MSGInterface`
 
-| Method       | Returns         | Behavior                                                                                                                                                                                                                                    |
-| ------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `attachment` | `MSGAttachment` | Reads attachment binary content by zero-based index. Embedded `.msg` attachments extract through `#innerMSGBurners`; ordinary attachments read their `dataId` stream directly. Throws `MSGError` (`RANGE`) when the index is out of bounds. |
-| `burn`       | `Uint8Array`    | Rebuilds the parsed TOP-LEVEL `.msg` as a standalone CFB binary, reading from `#properties`/`#bigBlockTable`. Throws `MSGError` (`BURN`) when the parsed structure (`.eml` input, or a missing root entry) cannot be reconstituted.         |
+| Method       | Returns         | Behavior                                                                                                                                                                                                                                             |
+| ------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attachment` | `MSGAttachment` | Reads attachment binary content by zero-based index. Embedded `.msg` attachments reconstitute their stored directory subtree; ordinary attachments read their `dataId` stream directly. Throws `MSGError` (`RANGE`) when the index is out of bounds. |
+| `burn`       | `Uint8Array`    | Rebuilds the parsed TOP-LEVEL `.msg` as a standalone CFB binary, reading from `#properties`/`#bigBlockTable`. Throws `MSGError` (`BURN`) when the parsed structure (`.eml` input, or a missing root entry) cannot be reconstituted.                  |
 
 ```ts
 import { createMSG, isSuccess } from '@orkestrel/msg'
@@ -375,7 +385,7 @@ if (isSuccess(result)) {
 
 Two burn paths exist and are never rewired into each other:
 
-- **`attachment(index)`** — when an attachment is itself an embedded `.msg` (`innerMSGContent === true`), its bytes come from `#innerMSGBurners[folderId]`, a CFB writer scoped to that attachment's own storage subtree.
+- **`attachment(index)`** — when an attachment is itself an embedded `.msg` (`innerMSGContent === true`), its stored directory entry selects the attachment's own storage subtree for CFB reconstitution.
 - **`burn()`** — rebuilds the TOP-LEVEL parsed message, reading `#properties` (the full CFB directory entry list) and `#bigBlockTable` (allocated sector map) built during construction.
 
 A caller extracting an embedded `.msg` attachment and burning it standalone goes through `attachment()`; rebuilding the file `MSG` was constructed from goes through `burn()`.
@@ -385,7 +395,8 @@ A caller extracting an embedded `.msg` attachment and burning it standalone goes
 - [`tests/src/core/MSG.test.ts`](../../tests/src/core/MSG.test.ts) — construction (`.eml` / `.msg` / malformed input), `chain`, `fields`, `attachment`, `burn`, and the embedded-`.msg` extraction path.
 - [`tests/src/core/factories.test.ts`](../../tests/src/core/factories.test.ts) — `createMSG`'s `Result` contract (`Success`/`Failure`, with parse failures surfaced as `Failure<MSGError>` rather than thrown).
 - [`tests/src/core/parsers.test.ts`](../../tests/src/core/parsers.test.ts) — `isMSGFile` / `decodeUTF8` / `detectFormat` / `parseMIMEPart` / `extractMessage` / `extractMessageFromMSG`, incl. `MIME_MAX_DEPTH` cycle guarding.
-- [`tests/src/core/helpers.test.ts`](../../tests/src/core/helpers.test.ts) — the `Result` constructors/guards, CFB byte/string/UUID readers, MIME/text codecs, and `burnCFB`.
+- [`tests/src/core/helpers.test.ts`](../../tests/src/core/helpers.test.ts) — the `Result` constructors/guards, CFB byte/string/UUID readers, and MIME/text codecs.
+- [`tests/src/core/shapers.test.ts`](../../tests/src/core/shapers.test.ts) — `burnCFB` validity, mini-stream/FAT/DIFAT boundaries, red-black directory ordering, cycle/name limits, and real-parser round trips.
 - [`tests/src/core/validators.test.ts`](../../tests/src/core/validators.test.ts) — `isEmailAttachment` / `isEmailMessage` / `isEmailChain` soundness on well-formed and malformed input.
 - `MSGError` shape and `isMSGError` narrowing are covered across [`tests/src/core/MSG.test.ts`](../../tests/src/core/MSG.test.ts), [`tests/src/core/factories.test.ts`](../../tests/src/core/factories.test.ts), and [`tests/src/core/helpers.test.ts`](../../tests/src/core/helpers.test.ts) — no standalone `errors.test.ts` file exists.
 

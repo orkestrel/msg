@@ -23,7 +23,7 @@ export class MSGError extends Error {
 		super(message)
 		this.name = 'MSGError'
 		this.code = code
-		this.context = context
+		if (context !== undefined) this.context = context
 	}
 }
 

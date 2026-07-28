@@ -55,6 +55,7 @@ export function decodeUTF8(bytes: Uint8Array): string {
 
 	while (i < bytes.length) {
 		const byte0 = bytes[i]
+		if (byte0 === undefined) break
 
 		if (byte0 < 0x80) {
 			result += String.fromCharCode(byte0)
@@ -89,6 +90,10 @@ export function decodeUTF8(bytes: Uint8Array): string {
 		let value = codePoint
 		for (let j = 1; j <= length; j++) {
 			const next = bytes[i + j]
+			if (next === undefined) {
+				valid = false
+				break
+			}
 			if ((next & 0xc0) !== 0x80) {
 				valid = false
 				break
@@ -183,7 +188,7 @@ export function parseMIMEPart(raw: string, depth = 0): MIMEPart {
 
 	const headers = parseMIMEHeaders(headerText)
 	const contentType = headers.get('content-type')
-	const primaryType = (contentType?.value ?? '').split(';')[0].trim().toLowerCase()
+	const primaryType = ((contentType?.value ?? '').split(';')[0] ?? '').trim().toLowerCase()
 	const boundary = contentType?.params.get('boundary') ?? ''
 
 	const parts: MIMEPart[] = []
@@ -293,15 +298,20 @@ export function extractMessageFromMSG(reader: {
  * @returns Structured EmailMessage
  */
 export function extractMessage(part: MIMEPart): EmailMessage {
-	const headerValue = (name: string): string => decodeMIMEWords(part.headers.get(name)?.value ?? '')
-
-	const splitAddresses = (raw: string): readonly string[] =>
-		raw.length === 0
+	const from = decodeMIMEWords(part.headers.get('from')?.value ?? '')
+	const recipientValues = ['to', 'cc'].map((name) =>
+		decodeMIMEWords(part.headers.get(name)?.value ?? ''),
+	)
+	const recipients = recipientValues.map((value) =>
+		value.length === 0
 			? []
-			: raw
+			: value
 					.split(',')
-					.map((s) => s.trim())
-					.filter((s) => s.length > 0)
+					.map((address) => address.trim())
+					.filter((address) => address.length > 0),
+	)
+	const to = recipients[0] ?? []
+	const cc = recipients[1] ?? []
 
 	const rawDate = part.headers.get('date')?.value
 	let date: Date | undefined
@@ -313,20 +323,28 @@ export function extractMessage(part: MIMEPart): EmailMessage {
 	const collectedText: string[] = []
 	const collectedHTML: string[] = []
 	const attachments: EmailAttachment[] = []
+	const pending = [part]
 
-	const walk = (p: MIMEPart) => {
-		const contentType = p.headers.get('content-type')
-		const disposition = p.headers.get('content-disposition')
-		const transferEncoding = p.headers.get('content-transfer-encoding')
+	while (pending.length > 0) {
+		const current = pending.pop()
+		if (current === undefined) break
+		const contentType = current.headers.get('content-type')
+		const disposition = current.headers.get('content-disposition')
+		const transferEncoding = current.headers.get('content-transfer-encoding')
 
-		const primaryType = (contentType?.value ?? 'text/plain').split(';')[0].trim().toLowerCase()
+		const primaryType = ((contentType?.value ?? 'text/plain').split(';')[0] ?? '')
+			.trim()
+			.toLowerCase()
 		const encoding = (transferEncoding?.value ?? '7bit').trim()
 		const charset = contentType?.params.get('charset') ?? 'utf-8'
 		const dispositionKind = (disposition?.value ?? '').trim().toLowerCase()
 
 		if (primaryType.startsWith('multipart/')) {
-			for (const child of p.parts) walk(child)
-			return
+			for (let index = current.parts.length - 1; index >= 0; index--) {
+				const child = current.parts[index]
+				if (child !== undefined) pending.push(child)
+			}
+			continue
 		}
 
 		const isAttachmentPart = dispositionKind === 'attachment'
@@ -334,30 +352,30 @@ export function extractMessage(part: MIMEPart): EmailMessage {
 		if (isAttachmentPart) {
 			const name =
 				disposition?.params.get('filename') ?? contentType?.params.get('name') ?? 'attachment'
-			const bytes = decodeMIMEEncoding(p.body, encoding)
+			const bytes = decodeMIMEEncoding(current.body, encoding)
 			attachments.push({
 				name: decodeMIMEWords(name),
 				mimeType: primaryType,
 				size: bytes.length,
 				bytes,
 			})
-			return
+			continue
 		}
 
 		if (primaryType === 'text/plain') {
-			collectedText.push(decodeMIMEText(p.body, encoding, charset))
-			return
+			collectedText.push(decodeMIMEText(current.body, encoding, charset))
+			continue
 		}
 
 		if (primaryType === 'text/html') {
-			collectedHTML.push(decodeMIMEText(p.body, encoding, charset))
-			return
+			collectedHTML.push(decodeMIMEText(current.body, encoding, charset))
+			continue
 		}
 
 		// Inline binary parts with a filename become attachments
 		const inlineName = contentType?.params.get('name') ?? disposition?.params.get('filename')
 		if (inlineName !== undefined) {
-			const bytes = decodeMIMEEncoding(p.body, encoding)
+			const bytes = decodeMIMEEncoding(current.body, encoding)
 			attachments.push({
 				name: decodeMIMEWords(inlineName),
 				mimeType: primaryType,
@@ -367,13 +385,11 @@ export function extractMessage(part: MIMEPart): EmailMessage {
 		}
 	}
 
-	walk(part)
-
 	return {
-		from: headerValue('from'),
-		to: splitAddresses(headerValue('to')),
-		cc: splitAddresses(headerValue('cc')),
-		subject: headerValue('subject'),
+		from,
+		to,
+		cc,
+		subject: decodeMIMEWords(part.headers.get('subject')?.value ?? ''),
 		date,
 		text: collectedText.join(''),
 		html: collectedHTML.join(''),

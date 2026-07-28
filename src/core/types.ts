@@ -71,7 +71,7 @@ export interface MSGDirectoryEntry {
 	readonly childProperty: number
 	readonly startBlock: number
 	readonly sizeBlock: number
-	children?: number[]
+	readonly children?: readonly number[]
 }
 
 /**
@@ -80,14 +80,14 @@ export interface MSGDirectoryEntry {
  * narrowed to the readonly {@link MSGFieldData} at the public boundary.
  */
 export interface MSGMutableFieldData {
-	kind: 'msg' | 'attachment' | 'recipient'
-	attachments?: MSGMutableFieldData[]
-	recipients?: MSGMutableFieldData[]
-	innerMSGContent?: true
-	innerMSGContentFields?: MSGMutableFieldData
-	dataId?: number
-	contentLength?: number
-	folderId?: number
+	readonly kind: 'msg' | 'attachment' | 'recipient'
+	readonly attachments?: readonly MSGMutableFieldData[]
+	readonly recipients?: readonly MSGMutableFieldData[]
+	readonly innerMSGContent?: true
+	readonly innerMSGContentFields?: MSGMutableFieldData
+	readonly dataId?: number
+	readonly contentLength?: number
+	readonly folderId?: number
 	[key: string]: unknown
 }
 
@@ -110,7 +110,7 @@ export interface MSGBurnerEntry {
 	readonly type: number
 	readonly length: number
 	readonly binaryProvider?: () => Uint8Array
-	children?: number[]
+	readonly children?: readonly number[]
 }
 
 /**
@@ -120,12 +120,12 @@ export interface MSGBurnerEntry {
  */
 export interface MSGBurnerLiteEntry {
 	readonly entry: MSGBurnerEntry
-	left: number
-	right: number
-	child: number
-	firstSector: number
+	readonly left: number
+	readonly right: number
+	readonly child: number
+	readonly firstSector: number
 	readonly mini: boolean
-	red: boolean
+	readonly red: boolean
 }
 
 /**

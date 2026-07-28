@@ -73,7 +73,6 @@ import {
 	fileTimeToUTCString,
 	toHexLower,
 	msftUUIDStringify,
-	burnCFB,
 } from './helpers.js'
 import {
 	isMSGFile,
@@ -83,6 +82,7 @@ import {
 	extractMessage,
 	extractMessageFromMSG,
 } from './parsers.js'
+import { burnCFB } from './shapers.js'
 
 // === MSG
 
@@ -125,7 +125,7 @@ export class MSG implements MSGInterface {
 	#bigBlockTable: number[] = []
 	#fields: MSGFieldData | undefined
 	#privatePidToKeyed: Record<number, MSGNameIdEntry> = {}
-	#innerMSGBurners: Record<number, () => Uint8Array> = {}
+	#innerMSGDirectories: Record<number, MSGDirectoryEntry> = {}
 
 	/**
 	 * Create and eagerly parse an MSG/EML instance.
@@ -184,14 +184,14 @@ export class MSG implements MSGInterface {
 			this.#properties = this.#readProperties(this.#propertyStart)
 			this.#bigBlockTable = this.#buildBigBlockTable()
 			this.#privatePidToKeyed = {}
-			this.#innerMSGBurners = {}
+			this.#innerMSGDirectories = {}
 
 			const fields = this.#extractFields()
 			this.#fields = fields
 
 			const message = extractMessageFromMSG({
-				parse: () => fields,
-				attachment: (index: number) => this.attachment(index),
+				parse: this.#readFields.bind(this),
+				attachment: this.attachment.bind(this),
 			})
 			this.#chain = { format: 'msg', messages: [message] }
 		} else {
@@ -246,10 +246,14 @@ export class MSG implements MSGInterface {
 		}
 
 		const attach = attachments[index]
+		if (attach === undefined) {
+			throw new MSGError('RANGE', `Attachment index ${index} out of range`, { index })
+		}
 		if (attach.innerMSGContent === true && typeof attach.folderId === 'number') {
 			const name = typeof attach.name === 'string' ? attach.name : 'embedded'
-			const burner = this.#innerMSGBurners[attach.folderId]
-			const content = burner !== undefined ? burner() : new Uint8Array(0)
+			const directory = this.#innerMSGDirectories[attach.folderId]
+			const content =
+				directory === undefined ? new Uint8Array(0) : this.#burnFolder(directory, true, true)
 			return { fileName: name + '.msg', content }
 		}
 
@@ -262,6 +266,9 @@ export class MSG implements MSGInterface {
 		}
 
 		const entry = this.#properties[attach.dataId]
+		if (entry === undefined) {
+			throw new MSGError('RANGE', 'Attachment has no valid data reference', { index })
+		}
 		const content = this.#readEntry(entry)
 		const fileName =
 			typeof attach.fileName === 'string'
@@ -298,6 +305,14 @@ export class MSG implements MSGInterface {
 	}
 
 	// === Header Parsing
+
+	#readFields(): MSGFieldData {
+		const fields = this.#fields
+		if (fields === undefined) {
+			throw new MSGError('MALFORMED', 'MSG field data is unavailable')
+		}
+		return fields
+	}
 
 	#parseHeader(): void {
 		if (!isMSGFile(this.#view)) {
@@ -573,7 +588,7 @@ export class MSG implements MSGInterface {
 			})
 		}
 		visited.add(nodeIndex)
-		node.children = []
+		const children: number[] = []
 
 		const siblingVisited = new Set<number>([node.childProperty])
 		const stack: Array<{ mode: string; index: number }> = [
@@ -587,7 +602,7 @@ export class MSG implements MSGInterface {
 			if (current === undefined) continue
 
 			if (item.mode === 'push') {
-				node.children.push(item.index)
+				children.push(item.index)
 			} else {
 				if (current.type === MSG_TYPE_DIRECTORY) {
 					this.#buildHierarchy(props, item.index, visited, depth + 1)
@@ -619,6 +634,7 @@ export class MSG implements MSGInterface {
 				}
 			}
 		}
+		props[nodeIndex] = { ...node, children }
 	}
 
 	// === Big Block Table (mini-stream container chain)
@@ -661,9 +677,9 @@ export class MSG implements MSGInterface {
 	#readSmallChainData(entry: MSGDirectoryEntry, chain: number[]): Uint8Array {
 		const result = new Uint8Array(entry.sizeBlock)
 		let idx = 0
-		for (let i = 0; i < chain.length; i++) {
+		for (const block of chain) {
 			const readLen = Math.min(result.length - idx, MSG_SMALL_BLOCK_SIZE)
-			this.#readSmallBlockData(chain[i], readLen, result, idx)
+			this.#readSmallBlockData(block, readLen, result, idx)
 			idx += readLen
 		}
 		return result
@@ -797,117 +813,124 @@ export class MSG implements MSGInterface {
 		const innerMSGContentFields =
 			innerSource === undefined ? undefined : this.#toFieldData(innerSource)
 
-		return {
-			kind: mutable.kind,
+		const entries = [
 			// email properties
-			subject: this.#str(mutable, 'subject'),
-			senderName: this.#str(mutable, 'senderName'),
-			senderEmail: this.#str(mutable, 'senderEmail'),
-			senderAddressType: this.#str(mutable, 'senderAddressType'),
-			senderSMTPAddress: this.#str(mutable, 'senderSMTPAddress'),
-			sentRepresentingSMTPAddress: this.#str(mutable, 'sentRepresentingSMTPAddress'),
-			body: this.#str(mutable, 'body'),
-			headers: this.#str(mutable, 'headers'),
-			bodyHTML: this.#str(mutable, 'bodyHTML'),
-			html: this.#bin(mutable, 'html'),
-			compressedRTF: this.#bin(mutable, 'compressedRTF'),
-			messageClass: this.#str(mutable, 'messageClass'),
-			messageFlags: this.#num(mutable, 'messageFlags'),
-			messageId: this.#str(mutable, 'messageId'),
-			internetCodepage: this.#num(mutable, 'internetCodepage'),
-			messageCodepage: this.#num(mutable, 'messageCodepage'),
-			messageLocaleId: this.#num(mutable, 'messageLocaleId'),
-			clientSubmitTime: this.#str(mutable, 'clientSubmitTime'),
-			messageDeliveryTime: this.#str(mutable, 'messageDeliveryTime'),
-			creationTime: this.#str(mutable, 'creationTime'),
-			lastModificationTime: this.#str(mutable, 'lastModificationTime'),
-			lastModifierName: this.#str(mutable, 'lastModifierName'),
-			creatorSMTPAddress: this.#str(mutable, 'creatorSMTPAddress'),
-			lastModifierSMTPAddress: this.#str(mutable, 'lastModifierSMTPAddress'),
-			preview: this.#str(mutable, 'preview'),
-			conversationTopic: this.#str(mutable, 'conversationTopic'),
-			normalizedSubject: this.#str(mutable, 'normalizedSubject'),
+			['subject', this.#str(mutable, 'subject')],
+			['senderName', this.#str(mutable, 'senderName')],
+			['senderEmail', this.#str(mutable, 'senderEmail')],
+			['senderAddressType', this.#str(mutable, 'senderAddressType')],
+			['senderSMTPAddress', this.#str(mutable, 'senderSMTPAddress')],
+			['sentRepresentingSMTPAddress', this.#str(mutable, 'sentRepresentingSMTPAddress')],
+			['body', this.#str(mutable, 'body')],
+			['headers', this.#str(mutable, 'headers')],
+			['bodyHTML', this.#str(mutable, 'bodyHTML')],
+			['html', this.#bin(mutable, 'html')],
+			['compressedRTF', this.#bin(mutable, 'compressedRTF')],
+			['messageClass', this.#str(mutable, 'messageClass')],
+			['messageFlags', this.#num(mutable, 'messageFlags')],
+			['messageId', this.#str(mutable, 'messageId')],
+			['internetCodepage', this.#num(mutable, 'internetCodepage')],
+			['messageCodepage', this.#num(mutable, 'messageCodepage')],
+			['messageLocaleId', this.#num(mutable, 'messageLocaleId')],
+			['clientSubmitTime', this.#str(mutable, 'clientSubmitTime')],
+			['messageDeliveryTime', this.#str(mutable, 'messageDeliveryTime')],
+			['creationTime', this.#str(mutable, 'creationTime')],
+			['lastModificationTime', this.#str(mutable, 'lastModificationTime')],
+			['lastModifierName', this.#str(mutable, 'lastModifierName')],
+			['creatorSMTPAddress', this.#str(mutable, 'creatorSMTPAddress')],
+			['lastModifierSMTPAddress', this.#str(mutable, 'lastModifierSMTPAddress')],
+			['preview', this.#str(mutable, 'preview')],
+			['conversationTopic', this.#str(mutable, 'conversationTopic')],
+			['normalizedSubject', this.#str(mutable, 'normalizedSubject')],
 			// recipient properties
-			name: this.#str(mutable, 'name'),
-			email: this.#str(mutable, 'email'),
-			addressType: this.#str(mutable, 'addressType'),
-			smtpAddress: this.#str(mutable, 'smtpAddress'),
-			recipientRole: this.#role(mutable, 'recipientRole'),
+			['name', this.#str(mutable, 'name')],
+			['email', this.#str(mutable, 'email')],
+			['addressType', this.#str(mutable, 'addressType')],
+			['smtpAddress', this.#str(mutable, 'smtpAddress')],
+			['recipientRole', this.#role(mutable, 'recipientRole')],
 			// attachment properties
-			extension: this.#str(mutable, 'extension'),
-			fileNameShort: this.#str(mutable, 'fileNameShort'),
-			fileName: this.#str(mutable, 'fileName'),
-			contentId: this.#str(mutable, 'contentId'),
-			attachmentHidden: this.#bool(mutable, 'attachmentHidden'),
-			mimeType: this.#str(mutable, 'mimeType'),
-			contentLength: mutable.contentLength,
-			dataId: mutable.dataId,
-			folderId: mutable.folderId,
-			innerMSGContent: mutable.innerMSGContent,
-			innerMSGContentFields,
-			attachments,
-			recipients,
+			['extension', this.#str(mutable, 'extension')],
+			['fileNameShort', this.#str(mutable, 'fileNameShort')],
+			['fileName', this.#str(mutable, 'fileName')],
+			['contentId', this.#str(mutable, 'contentId')],
+			['attachmentHidden', this.#bool(mutable, 'attachmentHidden')],
+			['mimeType', this.#str(mutable, 'mimeType')],
+			['contentLength', mutable.contentLength],
+			['dataId', mutable.dataId],
+			['folderId', mutable.folderId],
+			['innerMSGContent', mutable.innerMSGContent],
+			['innerMSGContentFields', innerMSGContentFields],
+			['attachments', attachments],
+			['recipients', recipients],
 			// contact properties
-			departmentName: this.#str(mutable, 'departmentName'),
-			middleName: this.#str(mutable, 'middleName'),
-			generation: this.#str(mutable, 'generation'),
-			surname: this.#str(mutable, 'surname'),
-			givenName: this.#str(mutable, 'givenName'),
-			companyName: this.#str(mutable, 'companyName'),
-			jobTitle: this.#str(mutable, 'jobTitle'),
-			location: this.#str(mutable, 'location'),
-			postalAddress: this.#str(mutable, 'postalAddress'),
-			streetAddress: this.#str(mutable, 'streetAddress'),
-			postalCode: this.#str(mutable, 'postalCode'),
-			country: this.#str(mutable, 'country'),
-			stateOrProvince: this.#str(mutable, 'stateOrProvince'),
-			homePhone: this.#str(mutable, 'homePhone'),
-			mobilePhone: this.#str(mutable, 'mobilePhone'),
-			businessPhone: this.#str(mutable, 'businessPhone'),
-			businessFax: this.#str(mutable, 'businessFax'),
-			businessHomePage: this.#str(mutable, 'businessHomePage'),
-			namePrefix: this.#str(mutable, 'namePrefix'),
-			homeAddressCity: this.#str(mutable, 'homeAddressCity'),
+			['departmentName', this.#str(mutable, 'departmentName')],
+			['middleName', this.#str(mutable, 'middleName')],
+			['generation', this.#str(mutable, 'generation')],
+			['surname', this.#str(mutable, 'surname')],
+			['givenName', this.#str(mutable, 'givenName')],
+			['companyName', this.#str(mutable, 'companyName')],
+			['jobTitle', this.#str(mutable, 'jobTitle')],
+			['location', this.#str(mutable, 'location')],
+			['postalAddress', this.#str(mutable, 'postalAddress')],
+			['streetAddress', this.#str(mutable, 'streetAddress')],
+			['postalCode', this.#str(mutable, 'postalCode')],
+			['country', this.#str(mutable, 'country')],
+			['stateOrProvince', this.#str(mutable, 'stateOrProvince')],
+			['homePhone', this.#str(mutable, 'homePhone')],
+			['mobilePhone', this.#str(mutable, 'mobilePhone')],
+			['businessPhone', this.#str(mutable, 'businessPhone')],
+			['businessFax', this.#str(mutable, 'businessFax')],
+			['businessHomePage', this.#str(mutable, 'businessHomePage')],
+			['namePrefix', this.#str(mutable, 'namePrefix')],
+			['homeAddressCity', this.#str(mutable, 'homeAddressCity')],
 			// appointment / calendar properties
-			appointmentStart: this.#str(mutable, 'appointmentStart'),
-			appointmentEnd: this.#str(mutable, 'appointmentEnd'),
-			clipStart: this.#str(mutable, 'clipStart'),
-			clipEnd: this.#str(mutable, 'clipEnd'),
-			timeZoneDescription: this.#str(mutable, 'timeZoneDescription'),
-			appointmentLocation: this.#str(mutable, 'appointmentLocation'),
-			appointmentOldLocation: this.#str(mutable, 'appointmentOldLocation'),
-			globalAppointmentId: this.#str(mutable, 'globalAppointmentId'),
+			['appointmentStart', this.#str(mutable, 'appointmentStart')],
+			['appointmentEnd', this.#str(mutable, 'appointmentEnd')],
+			['clipStart', this.#str(mutable, 'clipStart')],
+			['clipEnd', this.#str(mutable, 'clipEnd')],
+			['timeZoneDescription', this.#str(mutable, 'timeZoneDescription')],
+			['appointmentLocation', this.#str(mutable, 'appointmentLocation')],
+			['appointmentOldLocation', this.#str(mutable, 'appointmentOldLocation')],
+			['globalAppointmentId', this.#str(mutable, 'globalAppointmentId')],
 			// PidLid - common
-			votingResponse: this.#str(mutable, 'votingResponse'),
-			internetAccountName: this.#str(mutable, 'internetAccountName'),
+			['votingResponse', this.#str(mutable, 'votingResponse')],
+			['internetAccountName', this.#str(mutable, 'internetAccountName')],
 			// PidLid - address
-			yomiFirstName: this.#str(mutable, 'yomiFirstName'),
-			yomiLastName: this.#str(mutable, 'yomiLastName'),
-			yomiCompanyName: this.#str(mutable, 'yomiCompanyName'),
-			primaryEmailAddress: this.#str(mutable, 'primaryEmailAddress'),
-			primaryEmailDisplayName: this.#str(mutable, 'primaryEmailDisplayName'),
-			primaryEmailOriginalDisplayName: this.#str(mutable, 'primaryEmailOriginalDisplayName'),
-			fileUnder: this.#str(mutable, 'fileUnder'),
-			workAddressCity: this.#str(mutable, 'workAddressCity'),
-			workAddressStreet: this.#str(mutable, 'workAddressStreet'),
-			workAddressState: this.#str(mutable, 'workAddressState'),
-			workAddressPostalCode: this.#str(mutable, 'workAddressPostalCode'),
-			workAddressCountry: this.#str(mutable, 'workAddressCountry'),
-			workAddressCountryCode: this.#str(mutable, 'workAddressCountryCode'),
-			addressCountryCode: this.#str(mutable, 'addressCountryCode'),
-			contactWebPage: this.#str(mutable, 'contactWebPage'),
-			workAddress: this.#str(mutable, 'workAddress'),
-			instantMessagingAddress: this.#str(mutable, 'instantMessagingAddress'),
-			fax1AddressType: this.#str(mutable, 'fax1AddressType'),
-			fax1EmailAddress: this.#str(mutable, 'fax1EmailAddress'),
-			fax1OriginalDisplayName: this.#str(mutable, 'fax1OriginalDisplayName'),
-			fax2AddressType: this.#str(mutable, 'fax2AddressType'),
-			fax2EmailAddress: this.#str(mutable, 'fax2EmailAddress'),
-			fax2OriginalDisplayName: this.#str(mutable, 'fax2OriginalDisplayName'),
-			fax3AddressType: this.#str(mutable, 'fax3AddressType'),
-			fax3EmailAddress: this.#str(mutable, 'fax3EmailAddress'),
-			fax3OriginalDisplayName: this.#str(mutable, 'fax3OriginalDisplayName'),
+			['yomiFirstName', this.#str(mutable, 'yomiFirstName')],
+			['yomiLastName', this.#str(mutable, 'yomiLastName')],
+			['yomiCompanyName', this.#str(mutable, 'yomiCompanyName')],
+			['primaryEmailAddress', this.#str(mutable, 'primaryEmailAddress')],
+			['primaryEmailDisplayName', this.#str(mutable, 'primaryEmailDisplayName')],
+			['primaryEmailOriginalDisplayName', this.#str(mutable, 'primaryEmailOriginalDisplayName')],
+			['fileUnder', this.#str(mutable, 'fileUnder')],
+			['workAddressCity', this.#str(mutable, 'workAddressCity')],
+			['workAddressStreet', this.#str(mutable, 'workAddressStreet')],
+			['workAddressState', this.#str(mutable, 'workAddressState')],
+			['workAddressPostalCode', this.#str(mutable, 'workAddressPostalCode')],
+			['workAddressCountry', this.#str(mutable, 'workAddressCountry')],
+			['workAddressCountryCode', this.#str(mutable, 'workAddressCountryCode')],
+			['addressCountryCode', this.#str(mutable, 'addressCountryCode')],
+			['contactWebPage', this.#str(mutable, 'contactWebPage')],
+			['workAddress', this.#str(mutable, 'workAddress')],
+			['instantMessagingAddress', this.#str(mutable, 'instantMessagingAddress')],
+			['fax1AddressType', this.#str(mutable, 'fax1AddressType')],
+			['fax1EmailAddress', this.#str(mutable, 'fax1EmailAddress')],
+			['fax1OriginalDisplayName', this.#str(mutable, 'fax1OriginalDisplayName')],
+			['fax2AddressType', this.#str(mutable, 'fax2AddressType')],
+			['fax2EmailAddress', this.#str(mutable, 'fax2EmailAddress')],
+			['fax2OriginalDisplayName', this.#str(mutable, 'fax2OriginalDisplayName')],
+			['fax3AddressType', this.#str(mutable, 'fax3AddressType')],
+			['fax3EmailAddress', this.#str(mutable, 'fax3EmailAddress')],
+			['fax3OriginalDisplayName', this.#str(mutable, 'fax3OriginalDisplayName')],
+		] satisfies readonly {
+			[K in keyof MSGFieldData]-?: readonly [K, MSGFieldData[K]]
+		}[keyof MSGFieldData][]
+
+		const fields: MSGFieldData = { kind: mutable.kind }
+		for (const [key, value] of entries) {
+			if (value !== undefined) Object.assign(fields, { [key]: value })
 		}
+		return fields
 	}
 
 	#processDirectory(entry: MSGDirectoryEntry, fields: MSGMutableFieldData, subClass: string): void {
@@ -917,6 +940,7 @@ export class MSG implements MSGInterface {
 		// Process sub-folders first
 		for (let i = 0; i < children.length; i++) {
 			const childIndex = children[i]
+			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined) continue
 
@@ -928,6 +952,7 @@ export class MSG implements MSGInterface {
 		// Process document streams
 		for (let i = 0; i < children.length; i++) {
 			const childIndex = children[i]
+			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined) continue
 
@@ -952,13 +977,15 @@ export class MSG implements MSGInterface {
 	): void {
 		if (child.name.indexOf(MSG_PREFIX_ATTACHMENT) === 0) {
 			const attachmentField: MSGMutableFieldData = { kind: 'attachment' }
-			if (fields.attachments === undefined) fields.attachments = []
-			fields.attachments.push(attachmentField)
+			Object.assign(fields, {
+				attachments: [...(fields.attachments ?? []), attachmentField],
+			})
 			this.#processDirectory(child, attachmentField, 'attachment')
 		} else if (child.name.indexOf(MSG_PREFIX_RECIPIENT) === 0) {
 			const recipientField: MSGMutableFieldData = { kind: 'recipient' }
-			if (fields.recipients === undefined) fields.recipients = []
-			fields.recipients.push(recipientField)
+			Object.assign(fields, {
+				recipients: [...(fields.recipients ?? []), recipientField],
+			})
 			this.#processDirectory(child, recipientField, 'recip')
 		} else if (child.name.indexOf(MSG_PREFIX_NAMEID) === 0) {
 			this.#processNameIdDirectory(child)
@@ -971,10 +998,12 @@ export class MSG implements MSGInterface {
 					recipients: [],
 				}
 				this.#processDirectory(child, innerFields, 'sub')
-				fields.innerMSGContentFields = innerFields
-				fields.innerMSGContent = true
-				fields.folderId = childIndex
-				this.#innerMSGBurners[childIndex] = () => this.#burnFolder(child, true, true)
+				Object.assign(fields, {
+					innerMSGContentFields: innerFields,
+					innerMSGContent: true,
+					folderId: childIndex,
+				})
+				this.#innerMSGDirectories[childIndex] = child
 			}
 		}
 	}
@@ -994,8 +1023,10 @@ export class MSG implements MSGInterface {
 		const fieldType = value.substring(4, 8)
 
 		if (fieldClass === MSG_FIELD_CLASS_ATTACHMENT_DATA) {
-			fields.dataId = entryIndex
-			fields.contentLength = entry.sizeBlock
+			Object.assign(fields, {
+				dataId: entryIndex,
+				contentLength: entry.sizeBlock,
+			})
 			return
 		}
 
@@ -1121,6 +1152,7 @@ export class MSG implements MSGInterface {
 
 		for (let i = 0; i < children.length; i++) {
 			const childIndex = children[i]
+			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined || child.type !== MSG_TYPE_DOCUMENT) continue
 			if (child.name.indexOf(MSG_PREFIX_DOCUMENT) !== 0) continue
@@ -1223,36 +1255,31 @@ export class MSG implements MSGInterface {
 		const children = folder.children
 		if (children === undefined) return
 
-		const parentChildren = entries[parentIndex].children
-		if (parentChildren === undefined) return
+		const parent = entries[parentIndex]
+		if (parent === undefined) {
+			throw new MSGError('BURN', 'Burner parent index is out of range', { parentIndex })
+		}
+		if (parent.children === undefined) return
 
 		// Register document streams
 		for (let i = 0; i < children.length; i++) {
 			const childIndex = children[i]
+			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined || child.type !== MSG_TYPE_DOCUMENT) continue
 
-			let provider = () => this.#readEntry(child)
+			let provider = this.#readEntry.bind(this, child)
 			let length = child.sizeBlock
 
 			// Embedded MSG storages use the sub-message property stream layout.
 			// When promoting one to a standalone Root Entry, the top-level
 			// __properties_version1.0 stream needs 8 bytes inserted at offset 24.
 			if (padPropertyStream && child.name === '__properties_version1.0') {
-				const originalProvider = provider
-				provider = () => {
-					const src = originalProvider()
-					const dst = new Uint8Array(src.length + 8)
-					dst.set(src.subarray(0, 24), 0)
-					dst.set(src.subarray(24), 32)
-					return dst
-				}
+				provider = this.#readPaddedEntry.bind(this, child)
 				length = length + 8
 			}
 
-			const subIndex = entries.length
-			parentChildren.push(subIndex)
-			entries.push({
+			this.#appendBurnerEntry(entries, parentIndex, {
 				name: child.name,
 				type: MSG_TYPE_DOCUMENT,
 				binaryProvider: provider,
@@ -1267,15 +1294,14 @@ export class MSG implements MSGInterface {
 			if (rootProp !== undefined && rootProp.children !== undefined) {
 				for (let i = 0; i < rootProp.children.length; i++) {
 					const rootChildIndex = rootProp.children[i]
+					if (rootChildIndex === undefined) continue
 					const rootChild = this.#properties[rootChildIndex]
 					if (
 						rootChild !== undefined &&
 						rootChild.type === MSG_TYPE_DIRECTORY &&
 						rootChild.name === MSG_PREFIX_NAMEID
 					) {
-						const subIndex = entries.length
-						parentChildren.push(subIndex)
-						entries.push({
+						const subIndex = this.#appendBurnerEntry(entries, parentIndex, {
 							name: rootChild.name,
 							type: MSG_TYPE_DIRECTORY,
 							children: [],
@@ -1290,12 +1316,11 @@ export class MSG implements MSGInterface {
 		// Register sub-directories
 		for (let i = 0; i < children.length; i++) {
 			const childIndex = children[i]
+			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined || child.type !== MSG_TYPE_DIRECTORY) continue
 
-			const subIndex = entries.length
-			parentChildren.push(subIndex)
-			entries.push({
+			const subIndex = this.#appendBurnerEntry(entries, parentIndex, {
 				name: child.name,
 				type: MSG_TYPE_DIRECTORY,
 				children: [],
@@ -1303,5 +1328,31 @@ export class MSG implements MSGInterface {
 			})
 			this.#registerBurnerFolder(entries, subIndex, child, false, false)
 		}
+	}
+
+	#readPaddedEntry(entry: MSGDirectoryEntry): Uint8Array {
+		const source = this.#readEntry(entry)
+		const target = new Uint8Array(source.length + 8)
+		target.set(source.subarray(0, 24), 0)
+		target.set(source.subarray(24), 32)
+		return target
+	}
+
+	#appendBurnerEntry(
+		entries: MSGBurnerEntry[],
+		parentIndex: number,
+		entry: MSGBurnerEntry,
+	): number {
+		const parent = entries[parentIndex]
+		if (parent === undefined || parent.children === undefined) {
+			throw new MSGError('BURN', 'Burner parent index is out of range', { parentIndex })
+		}
+		const index = entries.length
+		entries[parentIndex] = {
+			...parent,
+			children: [...parent.children, index],
+		}
+		entries.push(entry)
+		return index
 	}
 }

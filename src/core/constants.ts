@@ -176,7 +176,7 @@ export const MSG_PREFIX_NAMEID = '__nameid_version1.0'
 /**
  * MAPI property tag to field name mapping.
  */
-export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = {
+export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = Object.freeze({
 	// email specific
 	'001a': 'messageClass',
 	'0037': 'subject',
@@ -240,27 +240,27 @@ export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = {
 	'3a44': 'middleName',
 	'3a45': 'namePrefix',
 	'3a51': 'businessHomePage',
-}
+})
 
 /**
  * Full 8-char property tag to field name mapping (for compound tags).
  */
-export const MSG_FIELD_FULL_NAME_MAPPING: Readonly<Record<string, string>> = {
+export const MSG_FIELD_FULL_NAME_MAPPING: Readonly<Record<string, string>> = Object.freeze({
 	'1013001f': 'bodyHTML',
 	'10130102': 'html',
-}
+})
 
 /**
  * MAPI property type tag to decode type mapping.
  */
-export const MSG_FIELD_TYPE_MAPPING: Readonly<Record<string, string>> = {
+export const MSG_FIELD_TYPE_MAPPING: Readonly<Record<string, string>> = Object.freeze({
 	'001e': 'string',
 	'001f': 'unicode',
 	'0040': 'time',
 	'0102': 'binary',
 	'0003': 'integer',
 	'000b': 'boolean',
-}
+})
 
 /**
  * Attachment data class identifier.
@@ -292,57 +292,58 @@ export const MSG_MAPI_RECIPIENT_BCC = 3
  * Maps well-known MAPI named property sets to their property
  * long IDs and corresponding field names on MSGFieldData.
  */
-export const MSG_PIDLID_MAPPING: Readonly<Record<string, Readonly<Record<number, string>>>> = {
-	// PSETID_Common
-	'00062008-0000-0000-c000-000000000046': {
-		0x00008524: 'votingResponse',
-		0x00008580: 'internetAccountName',
-	},
-	// PSETID_Appointment
-	'00062002-0000-0000-c000-000000000046': {
-		0x0000820d: 'appointmentStart',
-		0x0000820e: 'appointmentEnd',
-		0x00008208: 'appointmentLocation',
-		0x00008234: 'timeZoneDescription',
-		0x00008235: 'clipStart',
-		0x00008236: 'clipEnd',
-	},
-	// PSETID_Address
-	'00062004-0000-0000-c000-000000000046': {
-		0x00008005: 'fileUnder',
-		0x00008010: 'departmentName',
-		0x0000801b: 'workAddress',
-		0x0000802b: 'contactWebPage',
-		0x0000802c: 'yomiFirstName',
-		0x0000802d: 'yomiLastName',
-		0x0000802e: 'yomiCompanyName',
-		0x00008045: 'workAddressStreet',
-		0x00008046: 'workAddressCity',
-		0x00008047: 'workAddressState',
-		0x00008048: 'workAddressPostalCode',
-		0x00008049: 'workAddressCountry',
-		0x00008062: 'instantMessagingAddress',
-		0x00008080: 'primaryEmailDisplayName',
-		0x00008083: 'primaryEmailAddress',
-		0x00008084: 'primaryEmailOriginalDisplayName',
-		0x000080b2: 'fax1AddressType',
-		0x000080b3: 'fax1EmailAddress',
-		0x000080b4: 'fax1OriginalDisplayName',
-		0x000080c2: 'fax2AddressType',
-		0x000080c3: 'fax2EmailAddress',
-		0x000080c4: 'fax2OriginalDisplayName',
-		0x000080d2: 'fax3AddressType',
-		0x000080d3: 'fax3EmailAddress',
-		0x000080d4: 'fax3OriginalDisplayName',
-		0x000080db: 'workAddressCountryCode',
-		0x000080dd: 'addressCountryCode',
-	},
-	// PSETID_Meeting
-	'6ed8da90-450b-101b-98da-00aa003f1305': {
-		0x00000003: 'globalAppointmentId',
-		0x00000028: 'appointmentOldLocation',
-	},
-}
+export const MSG_PIDLID_MAPPING: Readonly<Record<string, Readonly<Record<number, string>>>> =
+	Object.freeze({
+		// PSETID_Common
+		'00062008-0000-0000-c000-000000000046': Object.freeze({
+			0x00008524: 'votingResponse',
+			0x00008580: 'internetAccountName',
+		}),
+		// PSETID_Appointment
+		'00062002-0000-0000-c000-000000000046': Object.freeze({
+			0x0000820d: 'appointmentStart',
+			0x0000820e: 'appointmentEnd',
+			0x00008208: 'appointmentLocation',
+			0x00008234: 'timeZoneDescription',
+			0x00008235: 'clipStart',
+			0x00008236: 'clipEnd',
+		}),
+		// PSETID_Address
+		'00062004-0000-0000-c000-000000000046': Object.freeze({
+			0x00008005: 'fileUnder',
+			0x00008010: 'departmentName',
+			0x0000801b: 'workAddress',
+			0x0000802b: 'contactWebPage',
+			0x0000802c: 'yomiFirstName',
+			0x0000802d: 'yomiLastName',
+			0x0000802e: 'yomiCompanyName',
+			0x00008045: 'workAddressStreet',
+			0x00008046: 'workAddressCity',
+			0x00008047: 'workAddressState',
+			0x00008048: 'workAddressPostalCode',
+			0x00008049: 'workAddressCountry',
+			0x00008062: 'instantMessagingAddress',
+			0x00008080: 'primaryEmailDisplayName',
+			0x00008083: 'primaryEmailAddress',
+			0x00008084: 'primaryEmailOriginalDisplayName',
+			0x000080b2: 'fax1AddressType',
+			0x000080b3: 'fax1EmailAddress',
+			0x000080b4: 'fax1OriginalDisplayName',
+			0x000080c2: 'fax2AddressType',
+			0x000080c3: 'fax2EmailAddress',
+			0x000080c4: 'fax2OriginalDisplayName',
+			0x000080d2: 'fax3AddressType',
+			0x000080d3: 'fax3EmailAddress',
+			0x000080d4: 'fax3OriginalDisplayName',
+			0x000080db: 'workAddressCountryCode',
+			0x000080dd: 'addressCountryCode',
+		}),
+		// PSETID_Meeting
+		'6ed8da90-450b-101b-98da-00aa003f1305': Object.freeze({
+			0x00000003: 'globalAppointmentId',
+			0x00000028: 'appointmentOldLocation',
+		}),
+	})
 
 // === MSGBurner
 
@@ -405,22 +406,22 @@ export const MSG_BURNER_ROOT_CLSID = new Uint8Array([
 /**
  * File extensions recognized as RFC 2822 / MIME email files.
  */
-export const EML_EXTENSIONS: readonly string[] = ['.eml']
+export const EML_EXTENSIONS: readonly string[] = Object.freeze(['.eml'])
 
 /**
  * File extensions recognized as Outlook binary email files.
  */
-export const MSG_EXTENSIONS: readonly string[] = ['.msg']
+export const MSG_EXTENSIONS: readonly string[] = Object.freeze(['.msg'])
 
 /**
  * MIME types recognized as RFC 2822 / MIME email files.
  */
-export const EML_MIME_TYPES: readonly string[] = ['message/rfc822']
+export const EML_MIME_TYPES: readonly string[] = Object.freeze(['message/rfc822'])
 
 /**
  * MIME types recognized as Outlook binary email files.
  */
-export const MSG_MIME_TYPES: readonly string[] = ['application/vnd.ms-outlook']
+export const MSG_MIME_TYPES: readonly string[] = Object.freeze(['application/vnd.ms-outlook'])
 
 /**
  * Default charset for decoding MIME part bodies.
@@ -472,11 +473,11 @@ export const MIME_MAX_DEPTH = 50
  * overlong encoding (a code point below its sequence's minimum) is
  * rejected rather than accepted by `decodeUTF8`.
  */
-export const UTF8_SEQUENCE_MINIMUM: Readonly<Record<number, number>> = {
+export const UTF8_SEQUENCE_MINIMUM: Readonly<Record<number, number>> = Object.freeze({
 	1: 0x80,
 	2: 0x800,
 	3: 0x10000,
-}
+})
 
 /**
  * Windows-1252 high-byte (0x80-0x9F) to Unicode code point lookup.
@@ -484,8 +485,8 @@ export const UTF8_SEQUENCE_MINIMUM: Readonly<Record<number, number>> = {
  * that Windows-1252 leaves undefined map to the byte's own value
  * (C1 control code passthrough) per the WHATWG encoding standard.
  */
-export const WINDOWS_1252_HIGH: readonly number[] = [
+export const WINDOWS_1252_HIGH: readonly number[] = Object.freeze([
 	0x20ac, 0x0081, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039,
 	0x0152, 0x008d, 0x017d, 0x008f, 0x0090, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
 	0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x009d, 0x017e, 0x0178,
-]
+])
