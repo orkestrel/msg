@@ -67,6 +67,9 @@ import {
 	MSG_MAX_HIERARCHY_DEPTH,
 } from './constants.js'
 import {
+	decodeUTF8,
+	detectFormat,
+	isMSGFile,
 	removeTrailingNull,
 	readUTF16String,
 	readANSIString,
@@ -74,15 +77,8 @@ import {
 	toHexLower,
 	msftUUIDStringify,
 } from './helpers.js'
-import {
-	isMSGFile,
-	decodeUTF8,
-	detectFormat,
-	parseMIMEPart,
-	extractMessage,
-	extractMessageFromMSG,
-} from './parsers.js'
-import { burnCFB } from './shapers.js'
+import { parseMIMEPart } from './parsers.js'
+import { burnCFB, extractMessage, extractMessageFromMSG } from './shapers.js'
 
 // === MSG
 

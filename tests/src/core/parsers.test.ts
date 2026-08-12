@@ -10,11 +10,13 @@ import {
 import type { EmailMessage, MSGFieldData } from '@src/core'
 import { asciiBytes, buildEml } from '../../setup.js'
 
-// parsers.ts holds the extracted leaf functions consumed by MSG.ts's
-// construction path: format sniffing, MIME parsing, message extraction
-// (from both a MIME tree and a parsed MSG field tree), CFB magic detection,
-// and the pure-ES UTF-8 decoder. Each leaf is unit-tested in isolation here;
-// full end-to-end parsing behavior lives in MSG.test.ts.
+// parsers.ts holds parseMIMEPart, the recursive raw-text-to-MIMEPart coercion
+// MSG.ts's construction path composes. The leaves it is exercised alongside
+// here — format sniffing, CFB magic detection, the pure-ES UTF-8 decoder
+// (helpers.ts) and message extraction from a MIME or MSG field tree
+// (shapers.ts) — are covered in their own mirrors too; this file pins the
+// composed behavior of the construction path's parsing seam. Full end-to-end
+// parsing behavior lives in MSG.test.ts.
 
 describe('detectFormat', () => {
 	it('detects eml from a .eml filename', () => {

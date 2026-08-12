@@ -12,7 +12,7 @@
 > quoted-printable, RFC 2047 encoded words) and the CFB sector/directory
 > machinery (`parsers.ts` / `helpers.ts` / `shapers.ts`) back both formats
 > without a `TextDecoder` dependency, so the whole surface stays usable in
-> the core's DOM/Node-free environment. Source: [`src/core`](../../src/core).
+> the core's DOM/Node-free environment. Source: [`src/core`](../src/core).
 > Surfaced through the `@src/core` barrel.
 
 ## Surface
@@ -36,7 +36,7 @@ if (isSuccess(result)) {
 
 ### Types
 
-From [`types.ts`](../../src/core/types.ts).
+From [`types.ts`](../src/core/types.ts).
 
 | Type                    | Kind      | Shape                                                                                                                              |
 | ----------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -68,7 +68,7 @@ From [`types.ts`](../../src/core/types.ts).
 
 ### Constants
 
-From [`constants.ts`](../../src/core/constants.ts) — CFB header/property layout offsets and sizes, the MSG/EML sniffing tables, MAPI field name mappings, and the CFB burner's sector/directory-entry geometry. None of these carry runtime behavior; every value is a fixed offset, size, or lookup table the parsing/burning code in `MSG.ts` / `parsers.ts` / `helpers.ts` reads from.
+From [`constants.ts`](../src/core/constants.ts) — CFB header/property layout offsets and sizes, the MSG/EML sniffing tables, MAPI field name mappings, and the CFB burner's sector/directory-entry geometry. None of these carry runtime behavior; every value is a fixed offset, size, or lookup table the parsing/burning code in `MSG.ts` / `parsers.ts` / `helpers.ts` reads from.
 
 | Constant                            | Kind  | Behavior                                                                                                                            |
 | ----------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -138,7 +138,7 @@ From [`constants.ts`](../../src/core/constants.ts) — CFB header/property layou
 
 ### Errors
 
-From [`errors.ts`](../../src/core/errors.ts) — every MSG/EML parsing or burning failure `throw`s (or, for `createMSG`, returns) an `MSGError` carrying a machine-readable `code`.
+From [`errors.ts`](../src/core/errors.ts) — every MSG/EML parsing or burning failure `throw`s (or, for `createMSG`, returns) an `MSGError` carrying a machine-readable `code`.
 
 | Symbol       | Kind     | Signature                               | Behavior                                                                                                                   |
 | ------------ | -------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -157,7 +157,7 @@ try {
 
 ### Helpers
 
-Pure, mostly-total leaves from [`helpers.ts`](../../src/core/helpers.ts) — the `Result` constructors/guards, the CFB byte/string/UUID readers `MSG.ts` composes, and the MIME/text codecs `parsers.ts` composes.
+Pure, mostly-total leaves from [`helpers.ts`](../src/core/helpers.ts) — the `Result` constructors/guards, the CFB byte/string/UUID readers and magic check `MSG.ts` composes, the format sniffer, and the MIME/text codecs `parsers.ts` and `shapers.ts` compose.
 
 | Helper                | Kind     | Signature                                                           | Behavior                                                                                                                          |
 | --------------------- | -------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -175,12 +175,15 @@ Pure, mostly-total leaves from [`helpers.ts`](../../src/core/helpers.ts) — the
 | `roundUpToMultiple`   | function | `(value: number, boundary: number) => number`                       | Rounds `value` up to the nearest multiple of `boundary` (a power of 2).                                                           |
 | `sectorsNeeded`       | function | `(bytes: number, sectorSize: number) => number`                     | Computes how many `sectorSize` sectors hold `bytes` (0 when `bytes <= 0`).                                                        |
 | `compareCFBName`      | function | `(a: string, b: string) => number`                                  | CFB-compliant directory name comparator — by UTF-16 length, then uppercased code points.                                          |
+| `isMSGFile`           | function | `(view: DataView) => boolean`                                       | `true` when `view`'s first 8 bytes match the CFB magic signature.                                                                 |
 | `decodeBase64`        | function | `(text: string) => Uint8Array`                                      | Decodes a Base64 string into raw bytes.                                                                                           |
 | `encodeUTF8`          | function | `(text: string) => Uint8Array`                                      | Encodes a string into UTF-8 bytes.                                                                                                |
+| `decodeUTF8`          | function | `(bytes: Uint8Array) => string`                                     | WHATWG-style UTF-8 decode — an invalid sequence decodes as U+FFFD rather than throwing.                                           |
 | `decodeLatin1`        | function | `(bytes: Uint8Array) => string`                                     | Decodes Latin-1 (ISO-8859-1) bytes into a string.                                                                                 |
 | `decodeWindows1252`   | function | `(bytes: Uint8Array) => string`                                     | Decodes Windows-1252 bytes into a string, resolving the `0x80`-`0x9F` range via `WINDOWS_1252_HIGH`.                              |
 | `resolveEncoding`     | function | `(label: string \| undefined) => MSGEncoding`                       | Resolves a charset label to an `MSGEncoding`, falling back to `FALLBACK_CHARSET`'s encoding when unrecognized.                    |
 | `isEmailFormat`       | function | `(value: unknown) => value is EmailFormat`                          | `true` when `value` is `'eml'` or `'msg'`.                                                                                        |
+| `detectFormat`        | function | `(name?: string, mime?: string) => EmailFormat \| undefined`        | Derives `EmailFormat` from a file name and/or MIME type; `undefined` when neither hints at a format.                              |
 | `parseMIMEHeaders`    | function | `(text: string) => ReadonlyMap<string, MIMEHeader>`                 | Parses an RFC 2822 / MIME header block, folding continuation lines.                                                               |
 | `decodeMIMEEncoding`  | function | `(body: string, encoding: string) => Uint8Array`                    | Decodes a MIME body (`base64` / `quoted-printable` / passthrough) to raw bytes; throws `MSGError('MALFORMED')` on invalid Base64. |
 | `decodeMIMEText`      | function | `(body: string, encoding: string, charset: string) => string`       | Decodes a MIME body to text via `decodeMIMEEncoding` + `resolveEncoding`.                                                         |
@@ -203,12 +206,15 @@ import {
 	roundUpToMultiple,
 	sectorsNeeded,
 	compareCFBName,
+	isMSGFile,
 	decodeBase64,
 	encodeUTF8,
+	decodeUTF8,
 	decodeLatin1,
 	decodeWindows1252,
 	resolveEncoding,
 	isEmailFormat,
+	detectFormat,
 	parseMIMEHeaders,
 	decodeMIMEEncoding,
 	decodeMIMEText,
@@ -222,7 +228,9 @@ toHexLower(255, 4) // '00ff'
 roundUpToMultiple(10, 8) // 16
 sectorsNeeded(100, 64) // 2
 compareCFBName('a', 'b') // negative
+isMSGFile(new DataView(new Uint8Array(8).buffer)) // false — no CFB magic
 isEmailFormat('eml') // true
+detectFormat('message.eml', undefined) // 'eml'
 isSuccess(success(1)) // true
 isFailure(failure(new Error())) // true
 decodeLatin1(new Uint8Array([65])) // 'A'
@@ -233,6 +241,7 @@ inferExtension('image/png') // '.png'
 decodeMIMEEncoding('aGk=', 'base64') // Uint8Array of 'hi'
 decodeMIMEText('aGk=', 'base64', 'utf-8') // 'hi'
 encodeUTF8('hi') // Uint8Array
+decodeUTF8(new Uint8Array([65])) // 'A'
 
 const view = new DataView(new Uint8Array(4).buffer)
 readUTF16String(view, 0, 2) // ''
@@ -242,47 +251,20 @@ msftUUIDStringify(new Uint8Array(16), 0) // a UUID string
 
 ### Shapers
 
-The CFB value shaper from [`shapers.ts`](../../src/core/shapers.ts) compiles a flat, readonly entry graph into a standalone binary without mutating the caller's descriptors.
+The value shapers from [`shapers.ts`](../src/core/shapers.ts) build a finished value out of an already-parsed source: the CFB shaper compiles a flat, readonly entry graph into a standalone binary without mutating the caller's descriptors, and the two email shapers project a parsed MIME tree or a parsed MSG field tree into an `EmailMessage`.
 
-| Shaper    | Kind     | Signature                                            | Behavior                                                                                                                                                                               |
-| --------- | -------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `burnCFB` | function | `(entries: readonly MSGBurnerEntry[]) => Uint8Array` | Reconstitutes a valid CFB binary from a flat `MSGBurnerEntry` list (root at index 0); throws `MSGError('BURN')` for an invalid/cyclic graph or a name exceeding `MSG_BURNER_NAME_MAX`. |
+| Shaper                  | Kind     | Signature                                                                                       | Behavior                                                                                                                                                                               |
+| ----------------------- | -------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `burnCFB`               | function | `(entries: readonly MSGBurnerEntry[]) => Uint8Array`                                            | Reconstitutes a valid CFB binary from a flat `MSGBurnerEntry` list (root at index 0); throws `MSGError('BURN')` for an invalid/cyclic graph or a name exceeding `MSG_BURNER_NAME_MAX`. |
+| `extractMessageFromMSG` | function | `(reader: { parse(): MSGFieldData, attachment(index: number): MSGAttachment }) => EmailMessage` | Extracts an `EmailMessage` from parsed MSG field data + attachment access; a corrupt attachment is skipped, not fatal.                                                                 |
+| `extractMessage`        | function | `(part: MIMEPart) => EmailMessage`                                                              | Extracts an `EmailMessage` by walking a parsed `MIMEPart` tree for text/HTML/attachments.                                                                                              |
 
 ```ts
-import { burnCFB } from '@orkestrel/msg'
-import type { MSGBurnerEntry } from '@orkestrel/msg'
+import { burnCFB, extractMessage, extractMessageFromMSG, parseMIMEPart } from '@orkestrel/msg'
+import type { MSGAttachment, MSGBurnerEntry, MSGFieldData } from '@orkestrel/msg'
 
 const entries: readonly MSGBurnerEntry[] = [{ name: 'Root Entry', type: 5, length: 0 }]
 burnCFB(entries) // Uint8Array — a standalone CFB binary
-```
-
-### Parsers
-
-Format-detection and MIME-tree parsing from [`parsers.ts`](../../src/core/parsers.ts) — the orchestration `MSG.ts` composes out of `helpers.ts`'s codec leaves.
-
-| Parser                  | Kind     | Signature                                                                                       | Behavior                                                                                                               |
-| ----------------------- | -------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `isMSGFile`             | function | `(view: DataView) => boolean`                                                                   | `true` when `view`'s first 8 bytes match the CFB magic signature.                                                      |
-| `decodeUTF8`            | function | `(bytes: Uint8Array) => string`                                                                 | WHATWG-style UTF-8 decode — an invalid sequence decodes as U+FFFD rather than throwing.                                |
-| `detectFormat`          | function | `(name?: string, mime?: string) => EmailFormat \| undefined`                                    | Derives `EmailFormat` from a file name and/or MIME type; `undefined` when neither hints at a format.                   |
-| `parseMIMEPart`         | function | `(raw: string, depth?: number) => MIMEPart`                                                     | Parses RFC 2822 / MIME text into a `MIMEPart` tree; throws `MSGError('CYCLE')` past `MIME_MAX_DEPTH` nesting.          |
-| `extractMessageFromMSG` | function | `(reader: { parse(): MSGFieldData, attachment(index: number): MSGAttachment }) => EmailMessage` | Extracts an `EmailMessage` from parsed MSG field data + attachment access; a corrupt attachment is skipped, not fatal. |
-| `extractMessage`        | function | `(part: MIMEPart) => EmailMessage`                                                              | Extracts an `EmailMessage` by walking a parsed `MIMEPart` tree for text/HTML/attachments.                              |
-
-```ts
-import {
-	isMSGFile,
-	decodeUTF8,
-	detectFormat,
-	parseMIMEPart,
-	extractMessage,
-	extractMessageFromMSG,
-} from '@orkestrel/msg'
-import type { MSGFieldData, MSGAttachment } from '@orkestrel/msg'
-
-detectFormat('message.eml', undefined) // 'eml'
-decodeUTF8(new Uint8Array([65])) // 'A'
-isMSGFile(new DataView(new Uint8Array(8).buffer)) // false — no CFB magic
 
 const part = parseMIMEPart('Subject: Hi\n\nBody text')
 extractMessage(part) // EmailMessage — { from: '', to: [], subject: 'Hi', text: 'Body text', ... }
@@ -297,9 +279,23 @@ extractMessageFromMSG({
 }) // EmailMessage
 ```
 
+### Parsers
+
+MIME-tree parsing from [`parsers.ts`](../src/core/parsers.ts) — the recursive coercion from raw text to a typed tree, built on `helpers.ts`'s header parser.
+
+| Parser          | Kind     | Signature                                   | Behavior                                                                                                      |
+| --------------- | -------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `parseMIMEPart` | function | `(raw: string, depth?: number) => MIMEPart` | Parses RFC 2822 / MIME text into a `MIMEPart` tree; throws `MSGError('CYCLE')` past `MIME_MAX_DEPTH` nesting. |
+
+```ts
+import { parseMIMEPart } from '@orkestrel/msg'
+
+parseMIMEPart('Subject: Hi\n\nBody text') // MIMEPart — { headers, body: 'Body text', parts: [] }
+```
+
 ### Validators
 
-From-unknown structural guards from [`validators.ts`](../../src/core/validators.ts) — each validates an arbitrary `unknown` value against the `EmailChain`/`EmailMessage`/`EmailAttachment` shape from scratch (unlike `isMSGError`, which narrows an already-typed value).
+From-unknown structural guards from [`validators.ts`](../src/core/validators.ts) — each validates an arbitrary `unknown` value against the `EmailChain`/`EmailMessage`/`EmailAttachment` shape from scratch (unlike `isMSGError`, which narrows an already-typed value).
 
 | Guard               | Kind     | Narrows to        | Behavior                                                                                                                                            |
 | ------------------- | -------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -326,7 +322,7 @@ isEmailChain({ format: 'eml', messages: [] }) // true
 
 ### `MSG`
 
-The implementing class of `MSGInterface`, from [`MSG.ts`](../../src/core/MSG.ts). Construction is eager and total-or-throw: `new MSG(input, options?)` fully parses the input — walking the CFB sector/directory chains directly with `DataView` for `.msg` (every offset bounds-checked, every chain cycle-guarded), or running the pure-ES MIME parser for `.eml` — or throws a typed `MSGError` (`UNSUPPORTED` for an unrecognized format, `MALFORMED`/`CYCLE`/`RANGE` for a structurally invalid one) rather than a raw `RangeError`. `chain` exposes the parsed `EmailChain` uniformly for both formats (`chain.format` distinguishes them); `fields` exposes the raw MAPI field tree, present only for `'msg'` input. Two internal paths stay distinct: `attachment()` serves embedded-`.msg` extraction from its stored directory subtree, while `burn()` rebuilds the TOP-LEVEL parsed message from `#properties`/`#bigBlockTable` — neither is ever rewired into the other. See [`## Methods`](#methods) for its public call-signature surface.
+The implementing class of `MSGInterface`, from [`MSG.ts`](../src/core/MSG.ts). Construction is eager and total-or-throw: `new MSG(input, options?)` fully parses the input — walking the CFB sector/directory chains directly with `DataView` for `.msg` (every offset bounds-checked, every chain cycle-guarded), or running the pure-ES MIME parser for `.eml` — or throws a typed `MSGError` (`UNSUPPORTED` for an unrecognized format, `MALFORMED`/`CYCLE`/`RANGE` for a structurally invalid one) rather than a raw `RangeError`. `chain` exposes the parsed `EmailChain` uniformly for both formats (`chain.format` distinguishes them); `fields` exposes the raw MAPI field tree, present only for `'msg'` input. Two internal paths stay distinct: `attachment()` serves embedded-`.msg` extraction from its stored directory subtree, while `burn()` rebuilds the TOP-LEVEL parsed message from `#properties`/`#bigBlockTable` — neither is ever rewired into the other. See [`## Methods`](#methods) for its public call-signature surface.
 
 ```ts
 import { MSG } from '@orkestrel/msg'
@@ -340,7 +336,7 @@ msg.fields // undefined for 'eml' input; MSGFieldData for 'msg' input
 
 ### Factories
 
-From [`factories.ts`](../../src/core/factories.ts).
+From [`factories.ts`](../src/core/factories.ts).
 
 | Factory     | Kind     | Signature                                                                   | Behavior                                                                                                                                                                                                                    |
 | ----------- | -------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -392,15 +388,15 @@ A caller extracting an embedded `.msg` attachment and burning it standalone goes
 
 ## Tests
 
-- [`tests/src/core/MSG.test.ts`](../../tests/src/core/MSG.test.ts) — construction (`.eml` / `.msg` / malformed input), `chain`, `fields`, `attachment`, `burn`, and the embedded-`.msg` extraction path.
-- [`tests/src/core/factories.test.ts`](../../tests/src/core/factories.test.ts) — `createMSG`'s `Result` contract (`Success`/`Failure`, with parse failures surfaced as `Failure<MSGError>` rather than thrown).
-- [`tests/src/core/parsers.test.ts`](../../tests/src/core/parsers.test.ts) — `isMSGFile` / `decodeUTF8` / `detectFormat` / `parseMIMEPart` / `extractMessage` / `extractMessageFromMSG`, incl. `MIME_MAX_DEPTH` cycle guarding.
-- [`tests/src/core/helpers.test.ts`](../../tests/src/core/helpers.test.ts) — the `Result` constructors/guards, CFB byte/string/UUID readers, and MIME/text codecs.
-- [`tests/src/core/shapers.test.ts`](../../tests/src/core/shapers.test.ts) — `burnCFB` validity, mini-stream/FAT/DIFAT boundaries, red-black directory ordering, cycle/name limits, and real-parser round trips.
-- [`tests/src/core/validators.test.ts`](../../tests/src/core/validators.test.ts) — `isEmailAttachment` / `isEmailMessage` / `isEmailChain` soundness on well-formed and malformed input.
-- `MSGError` shape and `isMSGError` narrowing are covered across [`tests/src/core/MSG.test.ts`](../../tests/src/core/MSG.test.ts), [`tests/src/core/factories.test.ts`](../../tests/src/core/factories.test.ts), and [`tests/src/core/helpers.test.ts`](../../tests/src/core/helpers.test.ts) — no standalone `errors.test.ts` file exists.
+- [`tests/src/core/MSG.test.ts`](../tests/src/core/MSG.test.ts) — construction (`.eml` / `.msg` / malformed input), `chain`, `fields`, `attachment`, `burn`, and the embedded-`.msg` extraction path.
+- [`tests/src/core/factories.test.ts`](../tests/src/core/factories.test.ts) — `createMSG`'s `Result` contract (`Success`/`Failure`, with parse failures surfaced as `Failure<MSGError>` rather than thrown).
+- [`tests/src/core/parsers.test.ts`](../tests/src/core/parsers.test.ts) — `isMSGFile` / `decodeUTF8` / `detectFormat` / `parseMIMEPart` / `extractMessage` / `extractMessageFromMSG`, incl. `MIME_MAX_DEPTH` cycle guarding.
+- [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — the `Result` constructors/guards, CFB byte/string/UUID readers, and MIME/text codecs.
+- [`tests/src/core/shapers.test.ts`](../tests/src/core/shapers.test.ts) — `burnCFB` validity, mini-stream/FAT/DIFAT boundaries, red-black directory ordering, cycle/name limits, and real-parser round trips.
+- [`tests/src/core/validators.test.ts`](../tests/src/core/validators.test.ts) — `isEmailAttachment` / `isEmailMessage` / `isEmailChain` soundness on well-formed and malformed input.
+- `MSGError` shape and `isMSGError` narrowing are covered across [`tests/src/core/MSG.test.ts`](../tests/src/core/MSG.test.ts), [`tests/src/core/factories.test.ts`](../tests/src/core/factories.test.ts), and [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — no standalone `errors.test.ts` file exists.
 
 ## See also
 
-- [`AGENTS.md`](../../AGENTS.md) — the rules; §12 the `Result`/throw pattern, §22 documentation-as-contracts.
-- [`README.md`](../README.md) — the guides index.
+- [`AGENTS.md`](../AGENTS.md) — the rules; §12 the `Result`/throw pattern, §22 documentation-as-contracts.
+- [`README.md`](README.md) — the guides index.

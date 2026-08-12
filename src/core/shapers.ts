@@ -1,4 +1,12 @@
-import type { MSGBurnerEntry, MSGBurnerLiteEntry } from './types.js'
+import type {
+	EmailAttachment,
+	EmailMessage,
+	MIMEPart,
+	MSGAttachment,
+	MSGBurnerEntry,
+	MSGBurnerLiteEntry,
+	MSGFieldData,
+} from './types.js'
 import {
 	MSG_BURNER_DIFAT_HEADER_SLOTS,
 	MSG_BURNER_DIFAT_SECTOR_MARKER,
@@ -17,7 +25,14 @@ import {
 	MSG_UNUSED_BLOCK,
 } from './constants.js'
 import { MSGError } from './errors.js'
-import { compareCFBName, sectorsNeeded } from './helpers.js'
+import {
+	compareCFBName,
+	decodeMIMEEncoding,
+	decodeMIMEText,
+	decodeMIMEWords,
+	formatEmailAddress,
+	sectorsNeeded,
+} from './helpers.js'
 
 /**
  * Reconstitute a valid CFB (Compound Binary File) from a flat list of
@@ -399,4 +414,183 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	}
 
 	return new Uint8Array(buffer)
+}
+
+// === Email Shapers
+
+/**
+ * Extract a single EmailMessage from a parsed MSG source.
+ * Reads field data and attachments from the given source.
+ *
+ * Each attachment is read independently: a corrupt attachment throws
+ * from `reader.attachment(i)` is caught and that attachment is skipped
+ * so the rest of the message still parses. This containment keeps one
+ * damaged attachment stream from failing the entire message extraction.
+ *
+ * @param reader - A parsed MSG source exposing field data and attachment access
+ * @returns Structured EmailMessage
+ */
+export function extractMessageFromMSG(reader: {
+	parse(): MSGFieldData
+	attachment(index: number): MSGAttachment
+}): EmailMessage {
+	const data = reader.parse()
+
+	const from = formatEmailAddress(data.senderName, data.senderSMTPAddress ?? data.senderEmail)
+
+	const recipients = data.recipients ?? []
+	const to = recipients
+		.filter((r) => r.recipientRole === 'to')
+		.map((r) => formatEmailAddress(r.name, r.smtpAddress ?? r.email))
+		.filter((s) => s.length > 0)
+	const cc = recipients
+		.filter((r) => r.recipientRole === 'cc')
+		.map((r) => formatEmailAddress(r.name, r.smtpAddress ?? r.email))
+		.filter((s) => s.length > 0)
+
+	const rawDate = data.messageDeliveryTime ?? data.clientSubmitTime
+	let date: Date | undefined
+	if (rawDate !== undefined) {
+		const parsed = new Date(rawDate)
+		date = isNaN(parsed.getTime()) ? undefined : parsed
+	}
+
+	const attachments: EmailAttachment[] = []
+	const attachmentFields = data.attachments ?? []
+	for (let i = 0; i < attachmentFields.length; i++) {
+		const attachment = attachmentFields[i]
+		if (attachment === undefined) continue
+		if (attachment.attachmentHidden === true) continue
+		if (attachment.innerMSGContent === true) continue
+		try {
+			const extracted = reader.attachment(i)
+			attachments.push({
+				name: extracted.fileName,
+				mimeType: attachment.mimeType ?? 'application/octet-stream',
+				size: extracted.content.length,
+				bytes: extracted.content,
+			})
+		} catch {
+			// A single corrupt attachment stream must not fail the whole message.
+			continue
+		}
+	}
+
+	return {
+		from,
+		to,
+		cc,
+		subject: data.subject ?? '',
+		date,
+		text: data.body ?? '',
+		html: data.bodyHTML ?? '',
+		attachments,
+	}
+}
+
+/**
+ * Extract a single EmailMessage from a top-level MIMEPart.
+ * Walks the full MIME tree to collect text, HTML, and attachments.
+ *
+ * @param part - Root MIMEPart from parseMIMEPart
+ * @returns Structured EmailMessage
+ */
+export function extractMessage(part: MIMEPart): EmailMessage {
+	const from = decodeMIMEWords(part.headers.get('from')?.value ?? '')
+	const recipientValues = ['to', 'cc'].map((name) =>
+		decodeMIMEWords(part.headers.get(name)?.value ?? ''),
+	)
+	const recipients = recipientValues.map((value) =>
+		value.length === 0
+			? []
+			: value
+					.split(',')
+					.map((address) => address.trim())
+					.filter((address) => address.length > 0),
+	)
+	const to = recipients[0] ?? []
+	const cc = recipients[1] ?? []
+
+	const rawDate = part.headers.get('date')?.value
+	let date: Date | undefined
+	if (rawDate !== undefined) {
+		const parsed = new Date(rawDate)
+		date = isNaN(parsed.getTime()) ? undefined : parsed
+	}
+
+	const collectedText: string[] = []
+	const collectedHTML: string[] = []
+	const attachments: EmailAttachment[] = []
+	const pending = [part]
+
+	while (pending.length > 0) {
+		const current = pending.pop()
+		if (current === undefined) break
+		const contentType = current.headers.get('content-type')
+		const disposition = current.headers.get('content-disposition')
+		const transferEncoding = current.headers.get('content-transfer-encoding')
+
+		const primaryType = ((contentType?.value ?? 'text/plain').split(';')[0] ?? '')
+			.trim()
+			.toLowerCase()
+		const encoding = (transferEncoding?.value ?? '7bit').trim()
+		const charset = contentType?.params.get('charset') ?? 'utf-8'
+		const dispositionKind = (disposition?.value ?? '').trim().toLowerCase()
+
+		if (primaryType.startsWith('multipart/')) {
+			for (let index = current.parts.length - 1; index >= 0; index--) {
+				const child = current.parts[index]
+				if (child !== undefined) pending.push(child)
+			}
+			continue
+		}
+
+		const isAttachmentPart = dispositionKind === 'attachment'
+
+		if (isAttachmentPart) {
+			const name =
+				disposition?.params.get('filename') ?? contentType?.params.get('name') ?? 'attachment'
+			const bytes = decodeMIMEEncoding(current.body, encoding)
+			attachments.push({
+				name: decodeMIMEWords(name),
+				mimeType: primaryType,
+				size: bytes.length,
+				bytes,
+			})
+			continue
+		}
+
+		if (primaryType === 'text/plain') {
+			collectedText.push(decodeMIMEText(current.body, encoding, charset))
+			continue
+		}
+
+		if (primaryType === 'text/html') {
+			collectedHTML.push(decodeMIMEText(current.body, encoding, charset))
+			continue
+		}
+
+		// Inline binary parts with a filename become attachments
+		const inlineName = contentType?.params.get('name') ?? disposition?.params.get('filename')
+		if (inlineName !== undefined) {
+			const bytes = decodeMIMEEncoding(current.body, encoding)
+			attachments.push({
+				name: decodeMIMEWords(inlineName),
+				mimeType: primaryType,
+				size: bytes.length,
+				bytes,
+			})
+		}
+	}
+
+	return {
+		from,
+		to,
+		cc,
+		subject: decodeMIMEWords(part.headers.get('subject')?.value ?? ''),
+		date,
+		text: collectedText.join(''),
+		html: collectedHTML.join(''),
+		attachments,
+	}
 }
