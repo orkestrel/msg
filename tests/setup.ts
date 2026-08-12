@@ -87,7 +87,7 @@ export function asciiBytes(text: string): Uint8Array {
  */
 export function patchBytes(
 	source: Uint8Array,
-	edits: readonly (readonly [number, number])[],
+	edits: ReadonlyArray<readonly [number, number]>,
 ): Uint8Array {
 	const copy = source.slice()
 	for (const [offset, value] of edits) copy[offset] = value
@@ -100,7 +100,7 @@ export function patchBytes(
  * returned as bytes via {@link asciiBytes}.
  */
 export function buildEml(
-	headers: readonly (readonly [string, string])[],
+	headers: ReadonlyArray<readonly [string, string]>,
 	body: string,
 ): Uint8Array {
 	const headerLines = headers.map(([name, value]) => `${name}: ${value}`).join('\r\n')

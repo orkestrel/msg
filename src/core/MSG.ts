@@ -922,9 +922,9 @@ export class MSG implements MSGInterface {
 			['fax3AddressType', this.#str(mutable, 'fax3AddressType')],
 			['fax3EmailAddress', this.#str(mutable, 'fax3EmailAddress')],
 			['fax3OriginalDisplayName', this.#str(mutable, 'fax3OriginalDisplayName')],
-		] satisfies readonly {
-			[K in keyof MSGFieldData]-?: readonly [K, MSGFieldData[K]]
-		}[keyof MSGFieldData][]
+		] satisfies ReadonlyArray<
+			{ [K in keyof MSGFieldData]-?: readonly [K, MSGFieldData[K]] }[keyof MSGFieldData]
+		>
 
 		const fields: MSGFieldData = { kind: mutable.kind }
 		for (const [key, value] of entries) {

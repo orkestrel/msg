@@ -120,7 +120,7 @@ describe('burnCFB — multiple children and directory ordering', () => {
 				length: 0,
 			},
 		]
-		names.forEach((name, index) => {
+		names.forEach((_name, index) => {
 			const dirIndex = entries.length
 			const docIndex = dirIndex + 1
 			const payload = expectDefined(payloads[index])
