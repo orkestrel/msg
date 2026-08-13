@@ -36,13 +36,8 @@ import {
 	inferExtension,
 	isMSGError,
 } from '@src/core'
-import {
-	asciiBytes,
-	buildEml,
-	buildNestedMultipart,
-	captureError,
-	expectDefined,
-} from '../../setup.js'
+import { captureError, requireValue } from '@orkestrel/test'
+import { asciiBytes, buildEml, buildNestedMultipart } from '../../setup.js'
 
 const FIXTURES_DIR = fileURLToPath(new URL('./fixtures/', import.meta.url))
 
@@ -473,7 +468,7 @@ describe('parseMIMEHeaders', () => {
 
 	it('parses content-type parameters', () => {
 		const headers = parseMIMEHeaders('Content-Type: text/plain; charset="utf-8"\r\n')
-		const header = expectDefined(headers.get('content-type'))
+		const header = requireValue(headers.get('content-type'))
 		expect(header.value).toBe('text/plain')
 		expect(header.params.get('charset')).toBe('utf-8')
 	})
@@ -655,7 +650,7 @@ describe('extractMessage', () => {
 		const [attachment] = message.attachments
 		expect(attachment?.name).toBe('file.txt')
 		expect(attachment?.mimeType).toBe('text/plain')
-		expect(decodeUTF8(expectDefined(attachment).bytes)).toBe('attachment content')
+		expect(decodeUTF8(requireValue(attachment).bytes)).toBe('attachment content')
 	})
 
 	it('leaves date undefined when the Date header is absent', () => {

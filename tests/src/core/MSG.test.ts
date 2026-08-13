@@ -16,7 +16,8 @@ import {
 	MSG_L_BIG_BLOCK_MARK,
 	MSG_PROP_NAME_SIZE_OFFSET,
 } from '@src/core'
-import { patchBytes, buildEml, expectDefined } from '../../setup.js'
+import { requireValue } from '@orkestrel/test'
+import { patchBytes, buildEml } from '../../setup.js'
 
 // Mirrors src/core/MSG.ts 1:1 (AGENTS §16): the single MSG class parses both
 // .eml (RFC 2822 / MIME) and .msg (CFB/OLE2) input eagerly in its
@@ -271,7 +272,7 @@ describe('MSG — msgInMsg.msg exercises an embedded .msg attachment', () => {
 
 		const innerMsg = new MSG(toArrayBuffer(result.content))
 		expect(innerMsg.fields?.kind).toBe('msg')
-		const innerAttachment = expectDefined(attachments[innerIndex])
+		const innerAttachment = requireValue(attachments[innerIndex])
 		expect(innerMsg.fields?.subject).toBe(innerAttachment.innerMSGContentFields?.subject)
 	})
 })
@@ -325,8 +326,8 @@ describe('MSG — burn() round-trip', () => {
 				original.fields?.attachments?.length ?? 0,
 			)
 
-			const originalMessage = expectDefined(original.chain.messages[0])
-			const reparsedMessage = expectDefined(reparsed.chain.messages[0])
+			const originalMessage = requireValue(original.chain.messages[0])
+			const reparsedMessage = requireValue(reparsed.chain.messages[0])
 			expect(reparsedMessage.to).toStrictEqual(originalMessage.to)
 			expect(reparsedMessage.cc).toStrictEqual(originalMessage.cc)
 		},
@@ -403,7 +404,7 @@ describe('MSG — end-to-end multipart/alternative eml', () => {
 		expect(msg.chain.format).toBe('eml')
 		expect(msg.chain.messages).toHaveLength(1)
 
-		const message = expectDefined(msg.chain.messages[0])
+		const message = requireValue(msg.chain.messages[0])
 		expect(message.subject).toBe('Multipart test')
 		expect(message.text).toBe('Hello, World!')
 		expect(message.html).toBe('<p>Hello, World!</p>')

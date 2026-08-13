@@ -14,7 +14,7 @@ import {
 	MSG_TYPE_DOCUMENT,
 	MSG_TYPE_ROOT,
 } from '@src/core'
-import { captureError, expectDefined } from '../../setup.js'
+import { captureError, requireValue } from '@orkestrel/test'
 
 // burnCFB reconstitutes a CFB (Compound Binary File) from a flat list of
 // MSGBurnerEntry descriptors — root storage at index 0, its children
@@ -123,7 +123,7 @@ describe('burnCFB — multiple children and directory ordering', () => {
 		names.forEach((_name, index) => {
 			const dirIndex = entries.length
 			const docIndex = dirIndex + 1
-			const payload = expectDefined(payloads[index])
+			const payload = requireValue(payloads[index])
 			entries.push({
 				name: `__attach_version1.0_#${String(index).padStart(8, '0')}`,
 				type: MSG_TYPE_DIRECTORY,
@@ -148,7 +148,7 @@ describe('burnCFB — multiple children and directory ordering', () => {
 		const actualFirstBytes = new Set(
 			(fields?.attachments ?? []).map((_, index) => {
 				const content = parsed.attachment(index).content
-				return expectDefined(content[0])
+				return requireValue(content[0])
 			}),
 		)
 		expect(actualFirstBytes).toEqual(expectedFirstBytes)

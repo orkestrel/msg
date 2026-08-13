@@ -2,70 +2,9 @@
 // Vitest project (`setupFiles[0]`). Keep this file free of `node:*` and of
 // `document` / `window`: this package is core-only.
 //
-// Generic recorder infrastructure plus byte/eml fixture builders, extracted
-// the moment they could serve another test (AGENTS §16.1).
-
-// ── Recorders (generic, environment-agnostic) ──────────────────────────────
-
-/**
- * A real callback that records its calls — use instead of a mock when a test
- * only needs to count invocations or inspect arguments.
- */
-export interface TestRecorderInterface<TArgs extends readonly unknown[]> {
-	readonly calls: readonly TArgs[]
-	readonly count: number
-	readonly handler: (...args: TArgs) => void
-	clear(): void
-}
-
-/**
- * Create a {@link TestRecorderInterface} — a real callback that pushes its
- * arguments onto a `calls` list instead of performing any real behavior.
- */
-export function createRecorder<
-	TArgs extends readonly unknown[] = readonly unknown[],
->(): TestRecorderInterface<TArgs> {
-	const calls: TArgs[] = []
-	return {
-		get calls() {
-			return calls
-		},
-		get count() {
-			return calls.length
-		},
-		handler: (...args: TArgs) => {
-			calls.push(args)
-		},
-		clear() {
-			calls.length = 0
-		},
-	}
-}
-
-/**
- * Narrow a possibly-`undefined` value to `T`, throwing (not `expect`ing) when
- * it is `undefined` — lets a caller assert on the value unconditionally
- * afterward instead of nesting `expect` inside an `if` (vitest/no-conditional-expect).
- */
-export function expectDefined<T>(value: T | undefined): T {
-	if (value === undefined) throw new Error('expected value to be defined')
-	return value
-}
-
-/**
- * Invoke `fn` and return whatever it throws, or `undefined` if it completes
- * without throwing — lets a caller assert on the thrown value unconditionally
- * afterward instead of nesting `expect` inside a `try`/`catch`
- * (vitest/no-conditional-expect).
- */
-export function captureError(fn: () => unknown): unknown {
-	try {
-		fn()
-		return undefined
-	} catch (error) {
-		return error
-	}
-}
+// The fleet-wide helpers live in `@orkestrel/test`. What remains here is what
+// is specific to this package: byte/eml fixture builders and the Vue-path
+// predicate, extracted the moment they could serve another test (AGENTS §16.1).
 
 // ── Byte fixture builders (generic, environment-agnostic) ──────────────────
 
