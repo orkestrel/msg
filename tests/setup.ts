@@ -28,7 +28,8 @@ export function patchBytes(
 	source: Uint8Array,
 	edits: ReadonlyArray<readonly [number, number]>,
 ): Uint8Array {
-	const copy = source.slice()
+	// A Buffer's own slice shares memory, so the copy is constructed rather than sliced.
+	const copy = new Uint8Array(source)
 	for (const [offset, value] of edits) copy[offset] = value
 	return copy
 }
