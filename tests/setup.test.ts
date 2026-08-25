@@ -32,9 +32,9 @@ describe('asciiBytes', () => {
 	})
 })
 
-// `patchBytes` copies through `Uint8Array.prototype.slice`, which `Buffer` overrides to return a
-// view sharing the source's memory. These cases assert the copy contract over the `Uint8Array` the
-// signature declares; a `Buffer` source is not covered here.
+// `Buffer` overrides `Uint8Array.prototype.slice` to return a view sharing the source's memory, so
+// `patchBytes` constructs its copy instead. These cases assert the copy contract over both the
+// `Uint8Array` the signature declares and the `Buffer` a fixture read hands it.
 describe('patchBytes', () => {
 	it('lands each edit at its own offset and leaves every other byte alone', () => {
 		const patched = patchBytes(new Uint8Array(8), [
