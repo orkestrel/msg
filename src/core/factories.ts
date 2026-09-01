@@ -14,10 +14,10 @@ import { isMSGError } from './errors.js'
  * {@link MSGError} on malformed or unsupported input, `createMSG` surfaces
  * every parse failure as a `Failure<MSGError>` in the returned
  * {@link Result} rather than throwing it. Unexpected non-`MSGError` errors
- * (programmer errors) still propagate by throwing. This is a deliberate NEW
- * dual API, not a mirror of `new MSG()`: reach for `new MSG()` when a thrown
- * exception is the desired control flow, and `createMSG` when a `Result` is
- * preferred.
+ * (programmer errors) still propagate by throwing. `createMSG` and
+ * `new MSG()` are two entry points, not one wrapping the other: reach for
+ * `new MSG()` when a thrown exception is the desired control flow, and
+ * `createMSG` when a `Result` is preferred.
  *
  * @param input - Raw .eml/.msg bytes or buffer
  * @param options - Optional parser configuration

@@ -7,7 +7,6 @@ import {
 	failure,
 	isSuccess,
 	isFailure,
-	isRecord,
 	isMSGFile,
 	removeTrailingNull,
 	readUTF16String,
@@ -24,7 +23,6 @@ import {
 	decodeLatin1,
 	decodeWindows1252,
 	resolveEncoding,
-	isEmailFormat,
 	detectFormat,
 	parseMIMEHeaders,
 	parseMIMEPart,
@@ -75,29 +73,6 @@ describe('Result helpers', () => {
 			expect(isSuccess(result)).toBe(false)
 			expect(isFailure(result)).toBe(true)
 			expect(isFailure(result) && result.error).toBe('nope')
-		})
-	})
-
-	describe('isRecord', () => {
-		it('accepts a plain object', () => {
-			expect(isRecord({})).toBe(true)
-			expect(isRecord({ a: 1 })).toBe(true)
-		})
-
-		it('rejects null', () => {
-			expect(isRecord(null)).toBe(false)
-		})
-
-		it('rejects an array', () => {
-			expect(isRecord([1, 2, 3])).toBe(false)
-			expect(isRecord([])).toBe(false)
-		})
-
-		it('rejects primitives', () => {
-			expect(isRecord('text')).toBe(false)
-			expect(isRecord(42)).toBe(false)
-			expect(isRecord(true)).toBe(false)
-			expect(isRecord(undefined)).toBe(false)
 		})
 	})
 })
@@ -384,20 +359,6 @@ describe('isMSGFile', () => {
 	it('returns false for an empty buffer', () => {
 		const bytes = new Uint8Array(0)
 		expect(isMSGFile(new DataView(bytes.buffer))).toBe(false)
-	})
-})
-
-describe('isEmailFormat', () => {
-	it('accepts eml and msg', () => {
-		expect(isEmailFormat('eml')).toBe(true)
-		expect(isEmailFormat('msg')).toBe(true)
-	})
-
-	it('rejects any other value', () => {
-		expect(isEmailFormat('pdf')).toBe(false)
-		expect(isEmailFormat(undefined)).toBe(false)
-		expect(isEmailFormat(null)).toBe(false)
-		expect(isEmailFormat(42)).toBe(false)
 	})
 })
 

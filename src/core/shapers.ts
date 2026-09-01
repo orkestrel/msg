@@ -2,12 +2,12 @@ import type {
 	EmailAttachment,
 	EmailMessage,
 	MIMEPart,
-	MSGAttachment,
 	MSGBurnerEntry,
 	MSGBurnerLiteEntry,
-	MSGFieldData,
+	MSGSourceInterface,
 } from './types.js'
 import {
+	FALLBACK_ATTACHMENT_NAME,
 	MSG_BURNER_DIFAT_HEADER_SLOTS,
 	MSG_BURNER_DIFAT_SECTOR_MARKER,
 	MSG_BURNER_DIR_ENTRY_SIZE,
@@ -430,10 +430,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
  * @param reader - A parsed MSG source exposing field data and attachment access
  * @returns Structured EmailMessage
  */
-export function extractMessageFromMSG(reader: {
-	parse(): MSGFieldData
-	attachment(index: number): MSGAttachment
-}): EmailMessage {
+export function extractMessageFromMSG(reader: MSGSourceInterface): EmailMessage {
 	const data = reader.parse()
 
 	const from = formatEmailAddress(data.senderName, data.senderSMTPAddress ?? data.senderEmail)
@@ -549,7 +546,9 @@ export function extractMessage(part: MIMEPart): EmailMessage {
 
 		if (isAttachmentPart) {
 			const name =
-				disposition?.params.get('filename') ?? contentType?.params.get('name') ?? 'attachment'
+				disposition?.params.get('filename') ??
+				contentType?.params.get('name') ??
+				FALLBACK_ATTACHMENT_NAME
 			const bytes = decodeMIMEEncoding(current.body, encoding)
 			attachments.push({
 				name: decodeMIMEWords(name),

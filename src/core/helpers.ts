@@ -1,6 +1,16 @@
 import type { Result, Success, Failure, EmailFormat, MIMEHeader, MSGEncoding } from './types.js'
 import { MSGError } from './errors.js'
-import { MIME_EXTENSIONS, UTF8_SEQUENCE_MINIMUM, WINDOWS_1252_HIGH } from './constants.js'
+import {
+	EML_EXTENSIONS,
+	EML_MIME_TYPES,
+	FALLBACK_CHARSET,
+	MIME_EXTENSIONS,
+	MSG_EXTENSIONS,
+	MSG_FILE_HEADER,
+	MSG_MIME_TYPES,
+	UTF8_SEQUENCE_MINIMUM,
+	WINDOWS_1252_HIGH,
+} from './constants.js'
 
 // === Result Helpers
 
@@ -52,16 +62,6 @@ export function isSuccess<T, E>(result: Result<T, E>): result is Success<T> {
  */
 export function isFailure<T, E>(result: Result<T, E>): result is Failure<E> {
 	return !result.success
-}
-
-/**
- * Narrow an unknown value to a plain record.
- *
- * @param value - Value to check
- * @returns True when value is a non-null, non-array object
- */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 // === MSG Helpers
@@ -195,10 +195,9 @@ export function msftUUIDStringify(data: Uint8Array, offset: number): string {
  * @returns True when the first 8 bytes match the CFB signature
  */
 export function isMSGFile(view: DataView): boolean {
-	const header = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
-	if (view.byteLength < header.length) return false
-	for (let i = 0; i < header.length; i++) {
-		if (view.getUint8(i) !== header[i]) return false
+	if (view.byteLength < MSG_FILE_HEADER.length) return false
+	for (let i = 0; i < MSG_FILE_HEADER.length; i++) {
+		if (view.getUint8(i) !== MSG_FILE_HEADER[i]) return false
 	}
 	return true
 }
@@ -482,7 +481,7 @@ export function decodeWindows1252(bytes: Uint8Array): string {
 /**
  * Resolve a free-form charset label (as seen in a MIME `charset` parameter)
  * to a supported {@link MSGEncoding}. Unknown or absent labels fall back
- * to `'utf-8'`.
+ * to {@link FALLBACK_CHARSET}.
  *
  * @param label - Charset label to resolve (case-insensitive)
  * @returns Resolved encoding
@@ -507,20 +506,10 @@ export function resolveEncoding(label: string | undefined): MSGEncoding {
 	) {
 		return 'latin1'
 	}
-	return 'utf-8'
+	return FALLBACK_CHARSET
 }
 
 // === EmailParser Helpers
-
-/**
- * Narrow an unknown value to a valid EmailFormat.
- *
- * @param value - Value to check
- * @returns True when value is 'eml' or 'msg'
- */
-export function isEmailFormat(value: unknown): value is EmailFormat {
-	return value === 'eml' || value === 'msg'
-}
 
 /**
  * Derive the EmailFormat from a file name and/or MIME type.
@@ -542,11 +531,15 @@ export function detectFormat(
 ): EmailFormat | undefined {
 	const lower = name?.toLowerCase()
 
-	if (lower?.endsWith('.eml') === true) return 'eml'
-	if (lower?.endsWith('.msg') === true) return 'msg'
+	if (lower !== undefined) {
+		if (EML_EXTENSIONS.some((extension) => lower.endsWith(extension))) return 'eml'
+		if (MSG_EXTENSIONS.some((extension) => lower.endsWith(extension))) return 'msg'
+	}
 
-	if (mime === 'message/rfc822') return 'eml'
-	if (mime === 'application/vnd.ms-outlook') return 'msg'
+	if (mime !== undefined) {
+		if (EML_MIME_TYPES.includes(mime)) return 'eml'
+		if (MSG_MIME_TYPES.includes(mime)) return 'msg'
+	}
 
 	return undefined
 }

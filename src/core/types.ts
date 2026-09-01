@@ -275,6 +275,32 @@ export interface MSGAttachment {
 	readonly content: Uint8Array
 }
 
+/**
+ * Parsed MSG source an email shaper reads from: the field tree plus
+ * indexed attachment access.
+ *
+ * @remarks
+ * `MSG` satisfies this contract through its own `#readFields` and
+ * `attachment` members, and `extractMessageFromMSG` accepts anything else
+ * that supplies the same two operations.
+ */
+export interface MSGSourceInterface {
+	/**
+	 * Read the parsed MAPI field tree.
+	 *
+	 * @returns The root message's field data
+	 */
+	parse(): MSGFieldData
+
+	/**
+	 * Read attachment binary content by index.
+	 *
+	 * @param index - Zero-based index into the parsed attachment list
+	 * @returns File name and raw binary content
+	 */
+	attachment(index: number): MSGAttachment
+}
+
 // === EmailParser
 
 /**

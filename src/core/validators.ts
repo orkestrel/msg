@@ -1,5 +1,24 @@
-import type { EmailAttachment, EmailChain, EmailMessage } from './types.js'
-import { isRecord } from './helpers.js'
+import type { EmailAttachment, EmailChain, EmailFormat, EmailMessage } from './types.js'
+
+/**
+ * Narrow an unknown value to a plain record.
+ *
+ * @param value - Value to check
+ * @returns True when value is a non-null, non-array object
+ */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Narrow an unknown value to a valid EmailFormat.
+ *
+ * @param value - Value to check
+ * @returns True when value is 'eml' or 'msg'
+ */
+export function isEmailFormat(value: unknown): value is EmailFormat {
+	return value === 'eml' || value === 'msg'
+}
 
 /**
  * Type guard for {@link EmailAttachment}.

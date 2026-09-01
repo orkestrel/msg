@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { isEmailAttachment, isEmailMessage, isEmailChain } from '@src/core'
+import { isEmailAttachment, isEmailChain, isEmailFormat, isEmailMessage, isRecord } from '@src/core'
 import type { EmailAttachment, EmailMessage, EmailChain } from '@src/core'
 
 // validators.ts holds the structural type guards used at the boundary of the
-// parsed EmailChain/EmailMessage/EmailAttachment shapes. Each guard must be
-// total: true on a valid shape, false on every other input — null,
-// undefined, primitives, and partial/malformed objects — never throwing.
+// parsed EmailChain/EmailMessage/EmailAttachment shapes, plus the record and
+// format guards they are built on. Each guard must be total: true on a valid
+// shape, false on every other input — null, undefined, primitives, and
+// partial/malformed objects — never throwing.
 
 const validAttachment: EmailAttachment = {
 	name: 'file.txt',
@@ -29,6 +30,43 @@ const validChain: EmailChain = {
 	format: 'eml',
 	messages: [validMessage],
 }
+
+describe('isRecord', () => {
+	it('accepts a plain object', () => {
+		expect(isRecord({})).toBe(true)
+		expect(isRecord({ a: 1 })).toBe(true)
+	})
+
+	it('rejects null', () => {
+		expect(isRecord(null)).toBe(false)
+	})
+
+	it('rejects an array', () => {
+		expect(isRecord([1, 2, 3])).toBe(false)
+		expect(isRecord([])).toBe(false)
+	})
+
+	it('rejects primitives', () => {
+		expect(isRecord('text')).toBe(false)
+		expect(isRecord(42)).toBe(false)
+		expect(isRecord(true)).toBe(false)
+		expect(isRecord(undefined)).toBe(false)
+	})
+})
+
+describe('isEmailFormat', () => {
+	it('accepts eml and msg', () => {
+		expect(isEmailFormat('eml')).toBe(true)
+		expect(isEmailFormat('msg')).toBe(true)
+	})
+
+	it('rejects any other value', () => {
+		expect(isEmailFormat('pdf')).toBe(false)
+		expect(isEmailFormat(undefined)).toBe(false)
+		expect(isEmailFormat(null)).toBe(false)
+		expect(isEmailFormat(42)).toBe(false)
+	})
+})
 
 describe('isEmailAttachment', () => {
 	it('accepts a valid EmailAttachment', () => {

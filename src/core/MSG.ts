@@ -21,6 +21,7 @@ import type {
 	MSGMutableFieldData,
 	MSGNameIdEntry,
 	MSGBurnerEntry,
+	MSGSourceInterface,
 } from './types.js'
 import { MSGError } from './errors.js'
 import {
@@ -185,10 +186,11 @@ export class MSG implements MSGInterface {
 			const fields = this.#extractFields()
 			this.#fields = fields
 
-			const message = extractMessageFromMSG({
+			const source: MSGSourceInterface = {
 				parse: this.#readFields.bind(this),
 				attachment: this.attachment.bind(this),
-			})
+			}
+			const message = extractMessageFromMSG(source)
 			this.#chain = { format: 'msg', messages: [message] }
 		} else {
 			const text = decodeUTF8(bytes)
@@ -763,25 +765,25 @@ export class MSG implements MSGInterface {
 	}
 
 	// narrows an unknown-typed mutable field to a string
-	#str(mutable: MSGMutableFieldData, key: string): string | undefined {
+	#string(mutable: MSGMutableFieldData, key: string): string | undefined {
 		const value = mutable[key]
 		return typeof value === 'string' ? value : undefined
 	}
 
 	// narrows an unknown-typed mutable field to a number
-	#num(mutable: MSGMutableFieldData, key: string): number | undefined {
+	#number(mutable: MSGMutableFieldData, key: string): number | undefined {
 		const value = mutable[key]
 		return typeof value === 'number' ? value : undefined
 	}
 
 	// narrows an unknown-typed mutable field to a boolean
-	#bool(mutable: MSGMutableFieldData, key: string): boolean | undefined {
+	#boolean(mutable: MSGMutableFieldData, key: string): boolean | undefined {
 		const value = mutable[key]
 		return typeof value === 'boolean' ? value : undefined
 	}
 
 	// narrows an unknown-typed mutable field to binary content
-	#bin(mutable: MSGMutableFieldData, key: string): Uint8Array | undefined {
+	#binary(mutable: MSGMutableFieldData, key: string): Uint8Array | undefined {
 		const value = mutable[key]
 		return value instanceof Uint8Array ? value : undefined
 	}
@@ -811,46 +813,46 @@ export class MSG implements MSGInterface {
 
 		const entries = [
 			// email properties
-			['subject', this.#str(mutable, 'subject')],
-			['senderName', this.#str(mutable, 'senderName')],
-			['senderEmail', this.#str(mutable, 'senderEmail')],
-			['senderAddressType', this.#str(mutable, 'senderAddressType')],
-			['senderSMTPAddress', this.#str(mutable, 'senderSMTPAddress')],
-			['sentRepresentingSMTPAddress', this.#str(mutable, 'sentRepresentingSMTPAddress')],
-			['body', this.#str(mutable, 'body')],
-			['headers', this.#str(mutable, 'headers')],
-			['bodyHTML', this.#str(mutable, 'bodyHTML')],
-			['html', this.#bin(mutable, 'html')],
-			['compressedRTF', this.#bin(mutable, 'compressedRTF')],
-			['messageClass', this.#str(mutable, 'messageClass')],
-			['messageFlags', this.#num(mutable, 'messageFlags')],
-			['messageId', this.#str(mutable, 'messageId')],
-			['internetCodepage', this.#num(mutable, 'internetCodepage')],
-			['messageCodepage', this.#num(mutable, 'messageCodepage')],
-			['messageLocaleId', this.#num(mutable, 'messageLocaleId')],
-			['clientSubmitTime', this.#str(mutable, 'clientSubmitTime')],
-			['messageDeliveryTime', this.#str(mutable, 'messageDeliveryTime')],
-			['creationTime', this.#str(mutable, 'creationTime')],
-			['lastModificationTime', this.#str(mutable, 'lastModificationTime')],
-			['lastModifierName', this.#str(mutable, 'lastModifierName')],
-			['creatorSMTPAddress', this.#str(mutable, 'creatorSMTPAddress')],
-			['lastModifierSMTPAddress', this.#str(mutable, 'lastModifierSMTPAddress')],
-			['preview', this.#str(mutable, 'preview')],
-			['conversationTopic', this.#str(mutable, 'conversationTopic')],
-			['normalizedSubject', this.#str(mutable, 'normalizedSubject')],
+			['subject', this.#string(mutable, 'subject')],
+			['senderName', this.#string(mutable, 'senderName')],
+			['senderEmail', this.#string(mutable, 'senderEmail')],
+			['senderAddressType', this.#string(mutable, 'senderAddressType')],
+			['senderSMTPAddress', this.#string(mutable, 'senderSMTPAddress')],
+			['sentRepresentingSMTPAddress', this.#string(mutable, 'sentRepresentingSMTPAddress')],
+			['body', this.#string(mutable, 'body')],
+			['headers', this.#string(mutable, 'headers')],
+			['bodyHTML', this.#string(mutable, 'bodyHTML')],
+			['html', this.#binary(mutable, 'html')],
+			['compressedRTF', this.#binary(mutable, 'compressedRTF')],
+			['messageClass', this.#string(mutable, 'messageClass')],
+			['messageFlags', this.#number(mutable, 'messageFlags')],
+			['messageId', this.#string(mutable, 'messageId')],
+			['internetCodepage', this.#number(mutable, 'internetCodepage')],
+			['messageCodepage', this.#number(mutable, 'messageCodepage')],
+			['messageLocaleId', this.#number(mutable, 'messageLocaleId')],
+			['clientSubmitTime', this.#string(mutable, 'clientSubmitTime')],
+			['messageDeliveryTime', this.#string(mutable, 'messageDeliveryTime')],
+			['creationTime', this.#string(mutable, 'creationTime')],
+			['lastModificationTime', this.#string(mutable, 'lastModificationTime')],
+			['lastModifierName', this.#string(mutable, 'lastModifierName')],
+			['creatorSMTPAddress', this.#string(mutable, 'creatorSMTPAddress')],
+			['lastModifierSMTPAddress', this.#string(mutable, 'lastModifierSMTPAddress')],
+			['preview', this.#string(mutable, 'preview')],
+			['conversationTopic', this.#string(mutable, 'conversationTopic')],
+			['normalizedSubject', this.#string(mutable, 'normalizedSubject')],
 			// recipient properties
-			['name', this.#str(mutable, 'name')],
-			['email', this.#str(mutable, 'email')],
-			['addressType', this.#str(mutable, 'addressType')],
-			['smtpAddress', this.#str(mutable, 'smtpAddress')],
+			['name', this.#string(mutable, 'name')],
+			['email', this.#string(mutable, 'email')],
+			['addressType', this.#string(mutable, 'addressType')],
+			['smtpAddress', this.#string(mutable, 'smtpAddress')],
 			['recipientRole', this.#role(mutable, 'recipientRole')],
 			// attachment properties
-			['extension', this.#str(mutable, 'extension')],
-			['fileNameShort', this.#str(mutable, 'fileNameShort')],
-			['fileName', this.#str(mutable, 'fileName')],
-			['contentId', this.#str(mutable, 'contentId')],
-			['attachmentHidden', this.#bool(mutable, 'attachmentHidden')],
-			['mimeType', this.#str(mutable, 'mimeType')],
+			['extension', this.#string(mutable, 'extension')],
+			['fileNameShort', this.#string(mutable, 'fileNameShort')],
+			['fileName', this.#string(mutable, 'fileName')],
+			['contentId', this.#string(mutable, 'contentId')],
+			['attachmentHidden', this.#boolean(mutable, 'attachmentHidden')],
+			['mimeType', this.#string(mutable, 'mimeType')],
 			['contentLength', mutable.contentLength],
 			['dataId', mutable.dataId],
 			['folderId', mutable.folderId],
@@ -859,65 +861,65 @@ export class MSG implements MSGInterface {
 			['attachments', attachments],
 			['recipients', recipients],
 			// contact properties
-			['departmentName', this.#str(mutable, 'departmentName')],
-			['middleName', this.#str(mutable, 'middleName')],
-			['generation', this.#str(mutable, 'generation')],
-			['surname', this.#str(mutable, 'surname')],
-			['givenName', this.#str(mutable, 'givenName')],
-			['companyName', this.#str(mutable, 'companyName')],
-			['jobTitle', this.#str(mutable, 'jobTitle')],
-			['location', this.#str(mutable, 'location')],
-			['postalAddress', this.#str(mutable, 'postalAddress')],
-			['streetAddress', this.#str(mutable, 'streetAddress')],
-			['postalCode', this.#str(mutable, 'postalCode')],
-			['country', this.#str(mutable, 'country')],
-			['stateOrProvince', this.#str(mutable, 'stateOrProvince')],
-			['homePhone', this.#str(mutable, 'homePhone')],
-			['mobilePhone', this.#str(mutable, 'mobilePhone')],
-			['businessPhone', this.#str(mutable, 'businessPhone')],
-			['businessFax', this.#str(mutable, 'businessFax')],
-			['businessHomePage', this.#str(mutable, 'businessHomePage')],
-			['namePrefix', this.#str(mutable, 'namePrefix')],
-			['homeAddressCity', this.#str(mutable, 'homeAddressCity')],
+			['departmentName', this.#string(mutable, 'departmentName')],
+			['middleName', this.#string(mutable, 'middleName')],
+			['generation', this.#string(mutable, 'generation')],
+			['surname', this.#string(mutable, 'surname')],
+			['givenName', this.#string(mutable, 'givenName')],
+			['companyName', this.#string(mutable, 'companyName')],
+			['jobTitle', this.#string(mutable, 'jobTitle')],
+			['location', this.#string(mutable, 'location')],
+			['postalAddress', this.#string(mutable, 'postalAddress')],
+			['streetAddress', this.#string(mutable, 'streetAddress')],
+			['postalCode', this.#string(mutable, 'postalCode')],
+			['country', this.#string(mutable, 'country')],
+			['stateOrProvince', this.#string(mutable, 'stateOrProvince')],
+			['homePhone', this.#string(mutable, 'homePhone')],
+			['mobilePhone', this.#string(mutable, 'mobilePhone')],
+			['businessPhone', this.#string(mutable, 'businessPhone')],
+			['businessFax', this.#string(mutable, 'businessFax')],
+			['businessHomePage', this.#string(mutable, 'businessHomePage')],
+			['namePrefix', this.#string(mutable, 'namePrefix')],
+			['homeAddressCity', this.#string(mutable, 'homeAddressCity')],
 			// appointment / calendar properties
-			['appointmentStart', this.#str(mutable, 'appointmentStart')],
-			['appointmentEnd', this.#str(mutable, 'appointmentEnd')],
-			['clipStart', this.#str(mutable, 'clipStart')],
-			['clipEnd', this.#str(mutable, 'clipEnd')],
-			['timeZoneDescription', this.#str(mutable, 'timeZoneDescription')],
-			['appointmentLocation', this.#str(mutable, 'appointmentLocation')],
-			['appointmentOldLocation', this.#str(mutable, 'appointmentOldLocation')],
-			['globalAppointmentId', this.#str(mutable, 'globalAppointmentId')],
+			['appointmentStart', this.#string(mutable, 'appointmentStart')],
+			['appointmentEnd', this.#string(mutable, 'appointmentEnd')],
+			['clipStart', this.#string(mutable, 'clipStart')],
+			['clipEnd', this.#string(mutable, 'clipEnd')],
+			['timeZoneDescription', this.#string(mutable, 'timeZoneDescription')],
+			['appointmentLocation', this.#string(mutable, 'appointmentLocation')],
+			['appointmentOldLocation', this.#string(mutable, 'appointmentOldLocation')],
+			['globalAppointmentId', this.#string(mutable, 'globalAppointmentId')],
 			// PidLid - common
-			['votingResponse', this.#str(mutable, 'votingResponse')],
-			['internetAccountName', this.#str(mutable, 'internetAccountName')],
+			['votingResponse', this.#string(mutable, 'votingResponse')],
+			['internetAccountName', this.#string(mutable, 'internetAccountName')],
 			// PidLid - address
-			['yomiFirstName', this.#str(mutable, 'yomiFirstName')],
-			['yomiLastName', this.#str(mutable, 'yomiLastName')],
-			['yomiCompanyName', this.#str(mutable, 'yomiCompanyName')],
-			['primaryEmailAddress', this.#str(mutable, 'primaryEmailAddress')],
-			['primaryEmailDisplayName', this.#str(mutable, 'primaryEmailDisplayName')],
-			['primaryEmailOriginalDisplayName', this.#str(mutable, 'primaryEmailOriginalDisplayName')],
-			['fileUnder', this.#str(mutable, 'fileUnder')],
-			['workAddressCity', this.#str(mutable, 'workAddressCity')],
-			['workAddressStreet', this.#str(mutable, 'workAddressStreet')],
-			['workAddressState', this.#str(mutable, 'workAddressState')],
-			['workAddressPostalCode', this.#str(mutable, 'workAddressPostalCode')],
-			['workAddressCountry', this.#str(mutable, 'workAddressCountry')],
-			['workAddressCountryCode', this.#str(mutable, 'workAddressCountryCode')],
-			['addressCountryCode', this.#str(mutable, 'addressCountryCode')],
-			['contactWebPage', this.#str(mutable, 'contactWebPage')],
-			['workAddress', this.#str(mutable, 'workAddress')],
-			['instantMessagingAddress', this.#str(mutable, 'instantMessagingAddress')],
-			['fax1AddressType', this.#str(mutable, 'fax1AddressType')],
-			['fax1EmailAddress', this.#str(mutable, 'fax1EmailAddress')],
-			['fax1OriginalDisplayName', this.#str(mutable, 'fax1OriginalDisplayName')],
-			['fax2AddressType', this.#str(mutable, 'fax2AddressType')],
-			['fax2EmailAddress', this.#str(mutable, 'fax2EmailAddress')],
-			['fax2OriginalDisplayName', this.#str(mutable, 'fax2OriginalDisplayName')],
-			['fax3AddressType', this.#str(mutable, 'fax3AddressType')],
-			['fax3EmailAddress', this.#str(mutable, 'fax3EmailAddress')],
-			['fax3OriginalDisplayName', this.#str(mutable, 'fax3OriginalDisplayName')],
+			['yomiFirstName', this.#string(mutable, 'yomiFirstName')],
+			['yomiLastName', this.#string(mutable, 'yomiLastName')],
+			['yomiCompanyName', this.#string(mutable, 'yomiCompanyName')],
+			['primaryEmailAddress', this.#string(mutable, 'primaryEmailAddress')],
+			['primaryEmailDisplayName', this.#string(mutable, 'primaryEmailDisplayName')],
+			['primaryEmailOriginalDisplayName', this.#string(mutable, 'primaryEmailOriginalDisplayName')],
+			['fileUnder', this.#string(mutable, 'fileUnder')],
+			['workAddressCity', this.#string(mutable, 'workAddressCity')],
+			['workAddressStreet', this.#string(mutable, 'workAddressStreet')],
+			['workAddressState', this.#string(mutable, 'workAddressState')],
+			['workAddressPostalCode', this.#string(mutable, 'workAddressPostalCode')],
+			['workAddressCountry', this.#string(mutable, 'workAddressCountry')],
+			['workAddressCountryCode', this.#string(mutable, 'workAddressCountryCode')],
+			['addressCountryCode', this.#string(mutable, 'addressCountryCode')],
+			['contactWebPage', this.#string(mutable, 'contactWebPage')],
+			['workAddress', this.#string(mutable, 'workAddress')],
+			['instantMessagingAddress', this.#string(mutable, 'instantMessagingAddress')],
+			['fax1AddressType', this.#string(mutable, 'fax1AddressType')],
+			['fax1EmailAddress', this.#string(mutable, 'fax1EmailAddress')],
+			['fax1OriginalDisplayName', this.#string(mutable, 'fax1OriginalDisplayName')],
+			['fax2AddressType', this.#string(mutable, 'fax2AddressType')],
+			['fax2EmailAddress', this.#string(mutable, 'fax2EmailAddress')],
+			['fax2OriginalDisplayName', this.#string(mutable, 'fax2OriginalDisplayName')],
+			['fax3AddressType', this.#string(mutable, 'fax3AddressType')],
+			['fax3EmailAddress', this.#string(mutable, 'fax3EmailAddress')],
+			['fax3OriginalDisplayName', this.#string(mutable, 'fax3OriginalDisplayName')],
 		] satisfies ReadonlyArray<
 			{ [K in keyof MSGFieldData]-?: readonly [K, MSGFieldData[K]] }[keyof MSGFieldData]
 		>

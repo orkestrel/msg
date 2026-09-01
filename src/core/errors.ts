@@ -1,6 +1,6 @@
 import type { MSGErrorCode } from './types.js'
 
-// AGENTS §12: an MSG/EML parsing or burning failure `throw`s an `MSGError`
+// An MSG/EML parsing or burning failure `throw`s an `MSGError`
 // carrying a machine-readable `code`, so a `catch` branches on `error.code`
 // instead of parsing the message. `createMSG` instead surfaces the same
 // `MSGError` through a `Result<MSGInterface, MSGError>` so a malformed
@@ -14,6 +14,13 @@ import type { MSGErrorCode } from './types.js'
  * `Failure.error` branch) can dispatch on `error.code` instead of parsing
  * the message text. `context` carries whatever structured detail the
  * throwing site has on hand (e.g. `{ offset, expected }`).
+ *
+ * @example
+ * ```ts
+ * import { MSGError } from '@src/core'
+ *
+ * throw new MSGError('RANGE', 'Attachment index 3 out of range', { index: 3 })
+ * ```
  */
 export class MSGError extends Error {
 	readonly code: MSGErrorCode

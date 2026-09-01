@@ -1,3 +1,5 @@
+import type { MSGFieldType } from './types.js'
+
 // === MSGReader
 
 /**
@@ -253,7 +255,7 @@ export const MSG_FIELD_FULL_NAME_MAPPING: Readonly<Record<string, string>> = Obj
 /**
  * MAPI property type tag to decode type mapping.
  */
-export const MSG_FIELD_TYPE_MAPPING: Readonly<Record<string, string>> = Object.freeze({
+export const MSG_FIELD_TYPE_MAPPING: Readonly<Record<string, MSGFieldType>> = Object.freeze({
 	'001e': 'string',
 	'001f': 'unicode',
 	'0040': 'time',
