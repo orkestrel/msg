@@ -82,7 +82,7 @@ describe('MSG — msg input', () => {
 			expect(msg.chain.format).toBe('msg')
 			expect(msg.chain.messages.length).toBe(1)
 			expect(msg.fields).toBeDefined()
-			expect(msg.fields?.kind).toBe('msg')
+			expect(msg.fields?.category).toBe('msg')
 		},
 	)
 })
@@ -97,8 +97,8 @@ describe('MSG — constructor accepts ArrayBuffer and Uint8Array forms identical
 		const fromZeroOffsetView = new MSG(bytes.slice())
 		const fromNonZeroOffsetView = new MSG(withByteOffset(bytes, 37))
 
-		expect(fromZeroOffsetView.fields?.kind).toBe('msg')
-		expect(fromNonZeroOffsetView.fields?.kind).toBe('msg')
+		expect(fromZeroOffsetView.fields?.category).toBe('msg')
+		expect(fromNonZeroOffsetView.fields?.category).toBe('msg')
 		expect(fromNonZeroOffsetView.fields?.subject).toBe(fromArrayBuffer.fields?.subject)
 		expect(fromNonZeroOffsetView.fields?.senderName).toBe(fromArrayBuffer.fields?.senderName)
 		expect(fromNonZeroOffsetView.fields?.body).toBe(fromArrayBuffer.fields?.body)
@@ -253,7 +253,7 @@ describe('MSG — msgInMsg.msg exercises an embedded .msg attachment', () => {
 		if (inner === undefined) throw new Error('expected an embedded MSG attachment')
 
 		expect(inner.innerMSGContentFields).toBeDefined()
-		expect(inner.innerMSGContentFields?.kind).toBe('msg')
+		expect(inner.innerMSGContentFields?.category).toBe('msg')
 	})
 
 	it('reads the embedded .msg binary content as a valid CFB file via attachment()', () => {
@@ -271,7 +271,7 @@ describe('MSG — msgInMsg.msg exercises an embedded .msg attachment', () => {
 		expect(isMSGFile(view)).toBe(true)
 
 		const innerMsg = new MSG(toArrayBuffer(result.content))
-		expect(innerMsg.fields?.kind).toBe('msg')
+		expect(innerMsg.fields?.category).toBe('msg')
 		const innerAttachment = requireValue(attachments[innerIndex])
 		expect(innerMsg.fields?.subject).toBe(innerAttachment.innerMSGContentFields?.subject)
 	})
@@ -356,7 +356,7 @@ describe('MSG — burn() round-trip', () => {
 describe('MSG — encoding option', () => {
 	it('parses successfully with { encoding: "latin1" }', () => {
 		const msg = new MSG(toArrayBuffer(readFixture('test.msg')), { encoding: 'latin1' })
-		expect(msg.fields?.kind).toBe('msg')
+		expect(msg.fields?.category).toBe('msg')
 	})
 
 	it('produces the same result as the default (windows-1252) encoding for this fixture', () => {
@@ -367,8 +367,8 @@ describe('MSG — encoding option', () => {
 		// fields differ depends on whether any non-Unicode string field in
 		// this fixture actually contains a high byte (0x80-0x9F), which
 		// windows-1252 and latin1 map differently.
-		expect(latin1Msg.fields?.kind).toBe('msg')
-		expect(defaultMsg.fields?.kind).toBe('msg')
+		expect(latin1Msg.fields?.category).toBe('msg')
+		expect(defaultMsg.fields?.category).toBe('msg')
 	})
 })
 

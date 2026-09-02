@@ -38,34 +38,33 @@ if (isSuccess(result)) {
 
 From [`types.ts`](../src/core/types.ts).
 
-| Type                    | Kind      | Shape                                                                                                                              |
-| ----------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `Success<T>`            | interface | `{ success: true, value }` — a successful `Result`.                                                                                |
-| `Failure<E>`            | interface | `{ success: false, error }` — a failed `Result`.                                                                                   |
-| `Result<T, E>`          | type      | `Success<T> \| Failure<E>` — discriminated union for a safe operation outcome.                                                     |
-| `MSGEncoding`           | type      | `'utf-8' \| 'utf-16le' \| 'windows-1252' \| 'latin1'` — decode encoding for non-Unicode MSG strings and MIME part bodies.          |
-| `MSGErrorCode`          | type      | `'UNSUPPORTED' \| 'MALFORMED' \| 'CYCLE' \| 'RANGE' \| 'BURN'` — machine-readable {@link MSGError} classification.                 |
-| `MSGDirectoryEntryType` | type      | `'root' \| 'directory' \| 'document' \| 'unallocated'` — CFB directory entry lifecycle type.                                       |
-| `MSGFieldType`          | type      | `'string' \| 'unicode' \| 'binary' \| 'time' \| 'integer' \| 'boolean'` — MAPI property data type tag.                             |
-| `MSGRecipientRole`      | type      | `'to' \| 'cc' \| 'bcc'` — recipient role in a message.                                                                             |
-| `MSGDirectoryEntry`     | interface | `{ type, name, previousProperty, nextProperty, childProperty, startBlock, sizeBlock, children? }` — a CFB storage/stream entry.    |
-| `MSGMutableFieldData`   | interface | Internal mutable accumulator (index-signature) used during field extraction, narrowed to `MSGFieldData` at the public boundary.    |
-| `MSGNameIdEntry`        | interface | `{ useName, name?, propertySet?, propertyLid? }` — a resolved `__nameid_version1.0` named property entry.                          |
-| `MSGBurnerEntry`        | interface | `{ name, type, length, binaryProvider?, children? }` — a flat CFB entry descriptor for `burnCFB`, root at index 0.                 |
-| `MSGBurnerLiteEntry`    | interface | `{ entry, left, right, child, firstSector, mini, red }` — internal red-black tree metadata used during CFB burn.                   |
-| `MSGFieldData`          | interface | Parsed MSG field data for the root message, an attachment, or a recipient — email/recipient/attachment/contact/appointment fields. |
-| `MSGAttachment`         | interface | `{ fileName, content }` — extracted attachment binary content.                                                                     |
-| `MSGSourceInterface`    | interface | `{ parse(): MSGFieldData, attachment(index): MSGAttachment }` — the parsed MSG source `extractMessageFromMSG` reads from.          |
-| `EmailFormat`           | type      | `'eml' \| 'msg'` — supported email file format.                                                                                    |
-| `MIMEHeader`            | interface | `{ value, params }` — a parsed MIME header's primary value and parameter map.                                                      |
-| `MIMEPart`              | interface | `{ headers, body, parts }` — a recursive MIME part tree node.                                                                      |
-| `EmailAttachment`       | interface | `{ name, mimeType, size, bytes }` — an extracted email attachment.                                                                 |
-| `EmailMessage`          | interface | `{ from, to, cc, subject, date, text, html, attachments }` — a structured email message.                                           |
-| `EmailChain`            | interface | `{ format, messages }` — the parsed email chain from a single file.                                                                |
-| `EmailInput`            | interface | `{ bytes, name?, mime? }` — raw email input handed to `createMSG`/`MSG`.                                                           |
-| `MSGInput`              | type      | `Uint8Array \| ArrayBuffer \| EmailInput` — raw input accepted by `createMSG`/`new MSG()`.                                         |
-| `MSGOptions`            | interface | `{ encoding? }` — configuration for creating an `MSGInterface` (default encoding `'windows-1252'`).                                |
-| `MSGInterface`          | interface | `{ options, chain, fields, attachment, burn }` — see [`## Methods`](#methods) below.                                               |
+| Type                  | Kind      | Shape                                                                                                                               |
+| --------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `Success<T>`          | interface | `{ success: true, value }` — a successful `Result`.                                                                                 |
+| `Failure<E>`          | interface | `{ success: false, error }` — a failed `Result`.                                                                                    |
+| `Result<T, E>`        | type      | `Success<T> \| Failure<E>` — discriminated union for a safe operation outcome.                                                      |
+| `MSGEncoding`         | type      | `'utf-8' \| 'utf-16le' \| 'windows-1252' \| 'latin1'` — decode encoding for non-Unicode MSG strings and MIME part bodies.           |
+| `MSGErrorCode`        | type      | `'UNSUPPORTED' \| 'MALFORMED' \| 'CYCLE' \| 'RANGE' \| 'BURN'` — machine-readable {@link MSGError} classification.                  |
+| `MSGFieldType`        | type      | `'string' \| 'unicode' \| 'binary' \| 'time' \| 'integer' \| 'boolean'` — MAPI property data type tag.                              |
+| `MSGRecipientRole`    | type      | `'to' \| 'cc' \| 'bcc'` — recipient role in a message.                                                                              |
+| `MSGDirectoryEntry`   | interface | `{ category, name, previousProperty, nextProperty, childProperty, startBlock, sizeBlock, children? }` — a CFB storage/stream entry. |
+| `MSGMutableFieldData` | interface | Internal mutable accumulator (index-signature) used during field extraction, narrowed to `MSGFieldData` at the public boundary.     |
+| `MSGNameIdEntry`      | interface | `{ useName, name?, propertySet?, propertyLid? }` — a resolved `__nameid_version1.0` named property entry.                           |
+| `MSGBurnerEntry`      | interface | `{ name, category, length, binaryProvider?, children? }` — a flat CFB entry descriptor for `burnCFB`, root at index 0.              |
+| `MSGBurnerLiteEntry`  | interface | `{ entry, left, right, child, firstSector, mini, red }` — internal red-black tree metadata used during CFB burn.                    |
+| `MSGFieldData`        | interface | Parsed MSG field data for the root message, an attachment, or a recipient — email/recipient/attachment/contact/appointment fields.  |
+| `MSGAttachment`       | interface | `{ fileName, content }` — extracted attachment binary content.                                                                      |
+| `MSGSourceInterface`  | interface | `{ parse(): MSGFieldData, attachment(index): MSGAttachment }` — the parsed MSG source `extractMessageFromMSG` reads from.           |
+| `EmailFormat`         | type      | `'eml' \| 'msg'` — supported email file format.                                                                                     |
+| `MIMEHeader`          | interface | `{ value, params }` — a parsed MIME header's primary value and parameter map.                                                       |
+| `MIMEPart`            | interface | `{ headers, body, parts }` — a recursive MIME part tree node.                                                                       |
+| `EmailAttachment`     | interface | `{ name, mimeType, size, bytes }` — an extracted email attachment.                                                                  |
+| `EmailMessage`        | interface | `{ from, to, cc, subject, date, text, html, attachments }` — a structured email message.                                            |
+| `EmailChain`          | interface | `{ format, messages }` — the parsed email chain from a single file.                                                                 |
+| `EmailInput`          | interface | `{ bytes, name?, mime? }` — raw email input handed to `createMSG`/`MSG`.                                                            |
+| `MSGInput`            | type      | `Uint8Array \| ArrayBuffer \| EmailInput` — raw input accepted by `createMSG`/`new MSG()`.                                          |
+| `MSGOptions`          | interface | `{ encoding? }` — configuration for creating an `MSGInterface` (default encoding `'windows-1252'`).                                 |
+| `MSGInterface`        | interface | `{ options, chain, fields, attachment, burn }` — see [`## Methods`](#methods) below.                                                |
 
 ### Constants
 
@@ -93,16 +92,16 @@ From [`constants.ts`](../src/core/constants.ts) — CFB header/property layout o
 | `MSG_MAX_HIERARCHY_DEPTH`           | const | `64` — recursion cap on directory-tree traversal, guarding against a cyclic/hostile property chain.                                 |
 | `MSG_PROPERTY_SIZE`                 | const | `0x0080` — the fixed byte size of one CFB directory entry.                                                                          |
 | `MSG_PROP_NAME_SIZE_OFFSET`         | const | `0x40` — directory-entry offset of the entry name's UTF-16 byte length.                                                             |
-| `MSG_PROP_TYPE_OFFSET`              | const | `0x42` — directory-entry offset of the entry's type byte.                                                                           |
+| `MSG_PROP_CATEGORY_OFFSET`          | const | `0x42` — directory-entry offset of the entry's object-category byte (the CFB object type byte).                                     |
 | `MSG_PROP_PREVIOUS_PROPERTY_OFFSET` | const | `0x44` — directory-entry offset of the red-black tree's previous sibling index.                                                     |
 | `MSG_PROP_NEXT_PROPERTY_OFFSET`     | const | `0x48` — directory-entry offset of the red-black tree's next sibling index.                                                         |
 | `MSG_PROP_CHILD_PROPERTY_OFFSET`    | const | `0x4c` — directory-entry offset of the first child storage index.                                                                   |
 | `MSG_PROP_START_BLOCK_OFFSET`       | const | `0x74` — directory-entry offset of the entry's starting sector.                                                                     |
 | `MSG_PROP_SIZE_OFFSET`              | const | `0x78` — directory-entry offset of the entry's stream byte length.                                                                  |
-| `MSG_TYPE_UNALLOCATED`              | const | `0` — directory entry type byte for an unallocated (free) slot.                                                                     |
-| `MSG_TYPE_DIRECTORY`                | const | `1` — directory entry type byte for a storage (folder-like) entry.                                                                  |
-| `MSG_TYPE_DOCUMENT`                 | const | `2` — directory entry type byte for a stream (document) entry.                                                                      |
-| `MSG_TYPE_ROOT`                     | const | `5` — directory entry type byte for the single root storage entry.                                                                  |
+| `MSG_CATEGORY_UNALLOCATED`          | const | `0` — directory entry category byte for an unallocated (free) slot.                                                                 |
+| `MSG_CATEGORY_DIRECTORY`            | const | `1` — directory entry category byte for a storage (folder-like) entry.                                                              |
+| `MSG_CATEGORY_DOCUMENT`             | const | `2` — directory entry category byte for a stream (document) entry.                                                                  |
+| `MSG_CATEGORY_ROOT`                 | const | `5` — directory entry category byte for the single root storage entry.                                                              |
 | `MSG_PREFIX_ATTACHMENT`             | const | `'__attach_version1.0'` — storage name prefix for an attachment entry.                                                              |
 | `MSG_PREFIX_RECIPIENT`              | const | `'__recip_version1.0'` — storage name prefix for a recipient entry.                                                                 |
 | `MSG_PREFIX_DOCUMENT`               | const | `'__substg1.'` — stream name prefix for a MAPI property document.                                                                   |
@@ -258,13 +257,13 @@ The value shapers from [`shapers.ts`](../src/core/shapers.ts) build a finished v
 import { burnCFB, extractMessage, extractMessageFromMSG, parseMIMEPart } from '@orkestrel/msg'
 import type { MSGAttachment, MSGBurnerEntry, MSGFieldData } from '@orkestrel/msg'
 
-const entries: readonly MSGBurnerEntry[] = [{ name: 'Root Entry', type: 5, length: 0 }]
+const entries: readonly MSGBurnerEntry[] = [{ name: 'Root Entry', category: 5, length: 0 }]
 burnCFB(entries) // Uint8Array — a standalone CFB binary
 
 const part = parseMIMEPart('Subject: Hi\n\nBody text')
 extractMessage(part) // EmailMessage — { from: '', to: [], subject: 'Hi', text: 'Body text', ... }
 
-const fields: MSGFieldData = { kind: 'msg', subject: 'Hi' }
+const fields: MSGFieldData = { category: 'msg', subject: 'Hi' }
 extractMessageFromMSG({
 	parse: () => fields,
 	attachment: (index: number): MSGAttachment => ({

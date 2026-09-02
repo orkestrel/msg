@@ -106,9 +106,10 @@ export const MSG_PROPERTY_SIZE = 0x0080
 export const MSG_PROP_NAME_SIZE_OFFSET = 0x40
 
 /**
- * Offset within a directory entry: object type byte.
+ * Offset within a directory entry: object-category byte, mirroring the
+ * Compound File Binary object type field.
  */
-export const MSG_PROP_TYPE_OFFSET = 0x42
+export const MSG_PROP_CATEGORY_OFFSET = 0x42
 
 /**
  * Offset within a directory entry: left sibling index.
@@ -136,24 +137,24 @@ export const MSG_PROP_START_BLOCK_OFFSET = 0x74
 export const MSG_PROP_SIZE_OFFSET = 0x78
 
 /**
- * Directory entry type: unallocated.
+ * Directory entry category: unallocated.
  */
-export const MSG_TYPE_UNALLOCATED = 0
+export const MSG_CATEGORY_UNALLOCATED = 0
 
 /**
- * Directory entry type: storage (folder).
+ * Directory entry category: storage (folder).
  */
-export const MSG_TYPE_DIRECTORY = 1
+export const MSG_CATEGORY_DIRECTORY = 1
 
 /**
- * Directory entry type: stream (document).
+ * Directory entry category: stream (document).
  */
-export const MSG_TYPE_DOCUMENT = 2
+export const MSG_CATEGORY_DOCUMENT = 2
 
 /**
- * Directory entry type: root storage.
+ * Directory entry category: root storage.
  */
-export const MSG_TYPE_ROOT = 5
+export const MSG_CATEGORY_ROOT = 5
 
 /**
  * Name prefix for attachment storage entries.

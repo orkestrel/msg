@@ -95,13 +95,13 @@ describe('extractMessage', () => {
 describe('extractMessageFromMSG', () => {
 	it('extracts a structured EmailMessage from a MSGReaderInterface-shaped reader', () => {
 		const fields: MSGFieldData = {
-			kind: 'msg',
+			category: 'msg',
 			subject: 'Hi there',
 			senderName: 'Alice',
 			senderEmail: 'alice@example.com',
 			body: 'plain body',
 			recipients: [
-				{ kind: 'recipient', name: 'Bob', email: 'bob@example.com', recipientRole: 'to' },
+				{ category: 'recipient', name: 'Bob', email: 'bob@example.com', recipientRole: 'to' },
 			],
 			attachments: [],
 		}
@@ -122,10 +122,10 @@ describe('extractMessageFromMSG', () => {
 
 	it('skips an attachment whose extraction throws, without failing the message', () => {
 		const fields: MSGFieldData = {
-			kind: 'msg',
+			category: 'msg',
 			subject: 'With attachment',
 			attachments: [
-				{ kind: 'attachment', fileName: 'broken.bin', mimeType: 'application/octet-stream' },
+				{ category: 'attachment', fileName: 'broken.bin', mimeType: 'application/octet-stream' },
 			],
 		}
 		const reader = {

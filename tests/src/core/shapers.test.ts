@@ -9,10 +9,10 @@ import {
 	MSG_BURNER_MINI_STREAM_CUTOFF,
 	MSG_BURNER_NAME_MAX,
 	MSG_BURNER_SECTOR_SIZE,
+	MSG_CATEGORY_DIRECTORY,
+	MSG_CATEGORY_DOCUMENT,
+	MSG_CATEGORY_ROOT,
 	MSG_END_OF_CHAIN,
-	MSG_TYPE_DIRECTORY,
-	MSG_TYPE_DOCUMENT,
-	MSG_TYPE_ROOT,
 } from '@src/core'
 import { captureError, requireValue } from '@orkestrel/test'
 
@@ -32,7 +32,7 @@ import { captureError, requireValue } from '@orkestrel/test'
 describe('burnCFB — minimal burn', () => {
 	it('burns a root-only entry list into a valid CFB file', () => {
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [], length: 0 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [], length: 0 },
 		]
 
 		const result = burnCFB(entries)
@@ -48,16 +48,16 @@ describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 		for (let i = 0; i < payload.length; i++) payload[i] = (i * 5 + 1) % 251
 
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [1], length: 0 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
 			{
 				name: '__attach_version1.0_#00000000',
-				type: MSG_TYPE_DIRECTORY,
+				category: MSG_CATEGORY_DIRECTORY,
 				children: [2],
 				length: 0,
 			},
 			{
 				name: '__substg1.0_37010102',
-				type: MSG_TYPE_DOCUMENT,
+				category: MSG_CATEGORY_DOCUMENT,
 				binaryProvider: () => payload,
 				length: payload.length,
 			},
@@ -76,16 +76,16 @@ describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 		for (let i = 0; i < payload.length; i++) payload[i] = (i * 7 + 3) % 251
 
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [1], length: 0 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
 			{
 				name: '__attach_version1.0_#00000000',
-				type: MSG_TYPE_DIRECTORY,
+				category: MSG_CATEGORY_DIRECTORY,
 				children: [2],
 				length: 0,
 			},
 			{
 				name: '__substg1.0_37010102',
-				type: MSG_TYPE_DOCUMENT,
+				category: MSG_CATEGORY_DOCUMENT,
 				binaryProvider: () => payload,
 				length: payload.length,
 			},
@@ -115,7 +115,7 @@ describe('burnCFB — multiple children and directory ordering', () => {
 		const entries: MSGBurnerEntry[] = [
 			{
 				name: 'Root Entry',
-				type: MSG_TYPE_ROOT,
+				category: MSG_CATEGORY_ROOT,
 				children: names.map((_, i) => 1 + i * 2),
 				length: 0,
 			},
@@ -126,13 +126,13 @@ describe('burnCFB — multiple children and directory ordering', () => {
 			const payload = requireValue(payloads[index])
 			entries.push({
 				name: `__attach_version1.0_#${String(index).padStart(8, '0')}`,
-				type: MSG_TYPE_DIRECTORY,
+				category: MSG_CATEGORY_DIRECTORY,
 				children: [docIndex],
 				length: 0,
 			})
 			entries.push({
 				name: '__substg1.0_37010102',
-				type: MSG_TYPE_DOCUMENT,
+				category: MSG_CATEGORY_DOCUMENT,
 				binaryProvider: () => payload,
 				length: payload.length,
 			})
@@ -156,11 +156,11 @@ describe('burnCFB — multiple children and directory ordering', () => {
 
 	it('writes a valid red-black directory tree for an incomplete level', () => {
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [1, 2, 3, 4], length: 0 },
-			{ name: 'B', type: MSG_TYPE_DOCUMENT, length: 0 },
-			{ name: 'a', type: MSG_TYPE_DOCUMENT, length: 0 },
-			{ name: 'AA', type: MSG_TYPE_DOCUMENT, length: 0 },
-			{ name: 'aa', type: MSG_TYPE_DOCUMENT, length: 0 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1, 2, 3, 4], length: 0 },
+			{ name: 'B', category: MSG_CATEGORY_DOCUMENT, length: 0 },
+			{ name: 'a', category: MSG_CATEGORY_DOCUMENT, length: 0 },
+			{ name: 'AA', category: MSG_CATEGORY_DOCUMENT, length: 0 },
+			{ name: 'aa', category: MSG_CATEGORY_DOCUMENT, length: 0 },
 		]
 
 		const binary = burnCFB(entries)
@@ -189,8 +189,13 @@ describe('burnCFB — directory name cap', () => {
 		expect(name.length).toBe(31)
 
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [1], length: 0 },
-			{ name, type: MSG_TYPE_DOCUMENT, binaryProvider: () => new Uint8Array([1]), length: 1 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
+			{
+				name,
+				category: MSG_CATEGORY_DOCUMENT,
+				binaryProvider: () => new Uint8Array([1]),
+				length: 1,
+			},
 		]
 
 		const result = burnCFB(entries)
@@ -202,8 +207,13 @@ describe('burnCFB — directory name cap', () => {
 		expect(name.length).toBe(32)
 
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [1], length: 0 },
-			{ name, type: MSG_TYPE_DOCUMENT, binaryProvider: () => new Uint8Array([1]), length: 1 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
+			{
+				name,
+				category: MSG_CATEGORY_DOCUMENT,
+				binaryProvider: () => new Uint8Array([1]),
+				length: 1,
+			},
 		]
 
 		const thrown = captureError(() => burnCFB(entries))
@@ -227,16 +237,16 @@ describe('burnCFB — structurally invalid entries (never a raw TypeError)', () 
 		const oversized = 'x'.repeat(MSG_BURNER_NAME_MAX + 1)
 
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [1], length: 0 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
 			{
 				name: '__attach_version1.0_#00000000',
-				type: MSG_TYPE_DIRECTORY,
+				category: MSG_CATEGORY_DIRECTORY,
 				children: [2],
 				length: 0,
 			},
 			{
 				name: oversized,
-				type: MSG_TYPE_DOCUMENT,
+				category: MSG_CATEGORY_DOCUMENT,
 				binaryProvider: () => new Uint8Array([1]),
 				length: 1,
 			},
@@ -251,9 +261,9 @@ describe('burnCFB — structurally invalid entries (never a raw TypeError)', () 
 
 	it('rejects a cyclic directory graph with MSGError(BURN)', () => {
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [1], length: 0 },
-			{ name: 'First', type: MSG_TYPE_DIRECTORY, children: [2], length: 0 },
-			{ name: 'Second', type: MSG_TYPE_DIRECTORY, children: [1], length: 0 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
+			{ name: 'First', category: MSG_CATEGORY_DIRECTORY, children: [2], length: 0 },
+			{ name: 'Second', category: MSG_CATEGORY_DIRECTORY, children: [1], length: 0 },
 		]
 
 		const thrown = captureError(() => burnCFB(entries))
@@ -266,8 +276,8 @@ describe('burnCFB — structurally invalid entries (never a raw TypeError)', () 
 describe('burnCFB — DIFAT allocation boundary', () => {
 	it('includes DIFAT sectors in the FAT fixed point', () => {
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [1], length: 0 },
-			{ name: 'Large', type: MSG_TYPE_DOCUMENT, length: 8_322_560 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
+			{ name: 'Large', category: MSG_CATEGORY_DOCUMENT, length: 8_322_560 },
 		]
 
 		const binary = burnCFB(entries)
@@ -280,8 +290,8 @@ describe('burnCFB — DIFAT allocation boundary', () => {
 
 	it('terminates an exactly full final DIFAT sector', () => {
 		const entries: MSGBurnerEntry[] = [
-			{ name: 'Root Entry', type: MSG_TYPE_ROOT, children: [1], length: 0 },
-			{ name: 'Large', type: MSG_TYPE_DOCUMENT, length: 15_280_128 },
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
+			{ name: 'Large', category: MSG_CATEGORY_DOCUMENT, length: 15_280_128 },
 		]
 
 		const binary = burnCFB(entries)

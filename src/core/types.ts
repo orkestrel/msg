@@ -46,11 +46,6 @@ export type MSGErrorCode = 'UNSUPPORTED' | 'MALFORMED' | 'CYCLE' | 'RANGE' | 'BU
 // === MSGReader
 
 /**
- * Lifecycle type of a directory entry in a CFB compound file.
- */
-export type MSGDirectoryEntryType = 'root' | 'directory' | 'document' | 'unallocated'
-
-/**
  * MAPI property data type tag.
  */
 export type MSGFieldType = 'string' | 'unicode' | 'binary' | 'time' | 'integer' | 'boolean'
@@ -62,9 +57,15 @@ export type MSGRecipientRole = 'to' | 'cc' | 'bcc'
 
 /**
  * CFB directory entry describing a storage or stream in the compound file.
+ *
+ * @remarks
+ * - `category` — the entry's object-category byte, mirroring the Compound File
+ *   Binary object type field at directory-entry offset `0x42`; compare it
+ *   against `MSG_CATEGORY_ROOT`, `MSG_CATEGORY_DIRECTORY`,
+ *   `MSG_CATEGORY_DOCUMENT`, and `MSG_CATEGORY_UNALLOCATED`
  */
 export interface MSGDirectoryEntry {
-	readonly type: number
+	readonly category: number
 	readonly name: string
 	readonly previousProperty: number
 	readonly nextProperty: number
@@ -80,7 +81,7 @@ export interface MSGDirectoryEntry {
  * narrowed to the readonly {@link MSGFieldData} at the public boundary.
  */
 export interface MSGMutableFieldData {
-	readonly kind: 'msg' | 'attachment' | 'recipient'
+	readonly category: 'msg' | 'attachment' | 'recipient'
 	readonly attachments?: readonly MSGMutableFieldData[]
 	readonly recipients?: readonly MSGMutableFieldData[]
 	readonly innerMSGContent?: true
@@ -104,10 +105,15 @@ export interface MSGNameIdEntry {
 /**
  * CFB entry descriptor for the MSG burner (CFB binary writer).
  * Entries form a flat list starting with the root storage at index 0.
+ *
+ * @remarks
+ * - `category` — the entry's object-category byte, written to the Compound File
+ *   Binary object type field at directory-entry offset `0x42`; supply
+ *   `MSG_CATEGORY_ROOT`, `MSG_CATEGORY_DIRECTORY`, or `MSG_CATEGORY_DOCUMENT`
  */
 export interface MSGBurnerEntry {
 	readonly name: string
-	readonly type: number
+	readonly category: number
 	readonly length: number
 	readonly binaryProvider?: () => Uint8Array
 	readonly children?: readonly number[]
@@ -133,7 +139,7 @@ export interface MSGBurnerLiteEntry {
  * Represents the root message, an attachment, or a recipient.
  *
  * @remarks
- * - `kind` — discriminator: 'msg', 'attachment', or 'recipient'
+ * - `category` — discriminator: 'msg', 'attachment', or 'recipient'
  * - `subject` — message subject
  * - `senderName` — display name of the sender
  * - `senderEmail` — email address of the sender
@@ -152,7 +158,7 @@ export interface MSGBurnerLiteEntry {
  * - `recipientRole` — recipient type: 'to', 'cc', or 'bcc'
  */
 export interface MSGFieldData {
-	readonly kind: 'msg' | 'attachment' | 'recipient'
+	readonly category: 'msg' | 'attachment' | 'recipient'
 	// email properties
 	readonly subject?: string
 	readonly senderName?: string

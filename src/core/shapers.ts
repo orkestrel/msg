@@ -18,10 +18,10 @@ import {
 	MSG_BURNER_NAME_MAX,
 	MSG_BURNER_ROOT_CLSID,
 	MSG_BURNER_SECTOR_SIZE,
+	MSG_CATEGORY_DIRECTORY,
+	MSG_CATEGORY_DOCUMENT,
 	MSG_END_OF_CHAIN,
 	MSG_FILE_HEADER,
-	MSG_TYPE_DIRECTORY,
-	MSG_TYPE_DOCUMENT,
 	MSG_UNUSED_BLOCK,
 } from './constants.js'
 import { MSGError } from './errors.js'
@@ -57,7 +57,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		right: -1,
 		child: -1,
 		firstSector: 0,
-		mini: entry.type === MSG_TYPE_DOCUMENT && entry.length < MSG_BURNER_MINI_STREAM_CUTOFF,
+		mini: entry.category === MSG_CATEGORY_DOCUMENT && entry.length < MSG_BURNER_MINI_STREAM_CUTOFF,
 		red: false,
 	}))
 	if (liteEntries[0] === undefined) {
@@ -182,7 +182,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 			if (child === undefined) {
 				throw new MSGError('BURN', 'Child entry index is out of range', { childIndex })
 			}
-			if (child.entry.type === MSG_TYPE_DIRECTORY) directories.push(childIndex)
+			if (child.entry.category === MSG_CATEGORY_DIRECTORY) directories.push(childIndex)
 		}
 	}
 
@@ -200,7 +200,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	}
 
 	for (const [index, liteEntry] of liteEntries.entries()) {
-		if (liteEntry.entry.type !== MSG_TYPE_DOCUMENT || liteEntry.mini) continue
+		if (liteEntry.entry.category !== MSG_CATEGORY_DOCUMENT || liteEntry.mini) continue
 		let firstSector = MSG_END_OF_CHAIN
 		if (liteEntry.entry.length !== 0) {
 			const count = sectorsNeeded(liteEntry.entry.length, MSG_BURNER_SECTOR_SIZE)
@@ -214,7 +214,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	}
 
 	for (const [index, liteEntry] of liteEntries.entries()) {
-		if (liteEntry.entry.type !== MSG_TYPE_DOCUMENT || !liteEntry.mini) continue
+		if (liteEntry.entry.category !== MSG_CATEGORY_DOCUMENT || !liteEntry.mini) continue
 		let firstSector = MSG_END_OF_CHAIN
 		if (liteEntry.entry.length !== 0) {
 			const count = sectorsNeeded(liteEntry.entry.length, MSG_BURNER_MINI_SECTOR_SIZE)
@@ -342,7 +342,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		}
 		view.setUint16(position + name.length * 2, 0, true)
 		view.setUint16(position + 0x40, (name.length + 1) * 2, true)
-		bytes[position + 0x42] = liteEntry.entry.type
+		bytes[position + 0x42] = liteEntry.entry.category
 		bytes[position + 0x43] = liteEntry.red ? 0 : 1
 		view.setInt32(position + 0x44, liteEntry.left, true)
 		view.setInt32(position + 0x48, liteEntry.right, true)
@@ -353,7 +353,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		const firstSector =
 			length !== 0
 				? liteEntry.firstSector
-				: liteEntry.entry.type === MSG_TYPE_DIRECTORY
+				: liteEntry.entry.category === MSG_CATEGORY_DIRECTORY
 					? 0
 					: MSG_END_OF_CHAIN
 		view.setInt32(position + 0x74, firstSector, true)
@@ -362,7 +362,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 
 	for (const liteEntry of liteEntries) {
 		if (
-			liteEntry.entry.type === MSG_TYPE_DOCUMENT &&
+			liteEntry.entry.category === MSG_CATEGORY_DOCUMENT &&
 			!liteEntry.mini &&
 			liteEntry.entry.binaryProvider !== undefined
 		) {
@@ -374,7 +374,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	if (firstMiniDataSector !== MSG_END_OF_CHAIN) {
 		for (const liteEntry of liteEntries) {
 			if (
-				liteEntry.entry.type === MSG_TYPE_DOCUMENT &&
+				liteEntry.entry.category === MSG_CATEGORY_DOCUMENT &&
 				liteEntry.mini &&
 				liteEntry.entry.binaryProvider !== undefined
 			) {

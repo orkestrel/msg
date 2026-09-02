@@ -42,15 +42,15 @@ import {
 	MSG_PROP_NO_INDEX,
 	MSG_PROPERTY_SIZE,
 	MSG_PROP_NAME_SIZE_OFFSET,
-	MSG_PROP_TYPE_OFFSET,
+	MSG_PROP_CATEGORY_OFFSET,
 	MSG_PROP_PREVIOUS_PROPERTY_OFFSET,
 	MSG_PROP_NEXT_PROPERTY_OFFSET,
 	MSG_PROP_CHILD_PROPERTY_OFFSET,
 	MSG_PROP_START_BLOCK_OFFSET,
 	MSG_PROP_SIZE_OFFSET,
-	MSG_TYPE_DIRECTORY,
-	MSG_TYPE_DOCUMENT,
-	MSG_TYPE_ROOT,
+	MSG_CATEGORY_DIRECTORY,
+	MSG_CATEGORY_DOCUMENT,
+	MSG_CATEGORY_ROOT,
 	MSG_PREFIX_ATTACHMENT,
 	MSG_PREFIX_RECIPIENT,
 	MSG_PREFIX_DOCUMENT,
@@ -502,7 +502,7 @@ export class MSG implements MSGInterface {
 	#readDirectoryEntry(offset: number): MSGDirectoryEntry {
 		const v = this.#view
 		return {
-			type: v.getUint8(offset + MSG_PROP_TYPE_OFFSET),
+			category: v.getUint8(offset + MSG_PROP_CATEGORY_OFFSET),
 			name: this.#readEntryName(offset),
 			previousProperty: v.getInt32(offset + MSG_PROP_PREVIOUS_PROPERTY_OFFSET, true),
 			nextProperty: v.getInt32(offset + MSG_PROP_NEXT_PROPERTY_OFFSET, true),
@@ -530,17 +530,17 @@ export class MSG implements MSGInterface {
 
 			for (let i = 0; i < entryCount; i++) {
 				if (offset + MSG_PROPERTY_SIZE > this.#byteLength) break
-				const entryType = this.#view.getUint8(offset + MSG_PROP_TYPE_OFFSET)
+				const entryCategory = this.#view.getUint8(offset + MSG_PROP_CATEGORY_OFFSET)
 
 				if (
-					entryType === MSG_TYPE_ROOT ||
-					entryType === MSG_TYPE_DIRECTORY ||
-					entryType === MSG_TYPE_DOCUMENT
+					entryCategory === MSG_CATEGORY_ROOT ||
+					entryCategory === MSG_CATEGORY_DIRECTORY ||
+					entryCategory === MSG_CATEGORY_DOCUMENT
 				) {
 					props.push(this.#readDirectoryEntry(offset))
 				} else {
 					props.push({
-						type: entryType,
+						category: entryCategory,
 						name: '',
 						previousProperty: -1,
 						nextProperty: -1,
@@ -602,7 +602,7 @@ export class MSG implements MSGInterface {
 			if (item.mode === 'push') {
 				children.push(item.index)
 			} else {
-				if (current.type === MSG_TYPE_DIRECTORY) {
+				if (current.category === MSG_CATEGORY_DIRECTORY) {
 					this.#buildHierarchy(props, item.index, visited, depth + 1)
 				}
 				if (current.nextProperty !== MSG_PROP_NO_INDEX) {
@@ -756,7 +756,7 @@ export class MSG implements MSGInterface {
 		}
 
 		const fields: MSGMutableFieldData = {
-			kind: 'msg',
+			category: 'msg',
 			attachments: [],
 			recipients: [],
 		}
@@ -924,7 +924,7 @@ export class MSG implements MSGInterface {
 			{ [K in keyof MSGFieldData]-?: readonly [K, MSGFieldData[K]] }[keyof MSGFieldData]
 		>
 
-		const fields: MSGFieldData = { kind: mutable.kind }
+		const fields: MSGFieldData = { category: mutable.category }
 		for (const [key, value] of entries) {
 			if (value !== undefined) Object.assign(fields, { [key]: value })
 		}
@@ -942,7 +942,7 @@ export class MSG implements MSGInterface {
 			const child = this.#properties[childIndex]
 			if (child === undefined) continue
 
-			if (child.type === MSG_TYPE_DIRECTORY) {
+			if (child.category === MSG_CATEGORY_DIRECTORY) {
 				this.#processSubDirectory(child, childIndex, fields)
 			}
 		}
@@ -954,7 +954,7 @@ export class MSG implements MSGInterface {
 			const child = this.#properties[childIndex]
 			if (child === undefined) continue
 
-			if (child.type === MSG_TYPE_DOCUMENT) {
+			if (child.category === MSG_CATEGORY_DOCUMENT) {
 				if (child.name.indexOf(MSG_PREFIX_DOCUMENT) === 0) {
 					this.#processDocument(child, childIndex, fields)
 				} else if (child.name === '__properties_version1.0') {
@@ -974,13 +974,13 @@ export class MSG implements MSGInterface {
 		fields: MSGMutableFieldData,
 	): void {
 		if (child.name.indexOf(MSG_PREFIX_ATTACHMENT) === 0) {
-			const attachmentField: MSGMutableFieldData = { kind: 'attachment' }
+			const attachmentField: MSGMutableFieldData = { category: 'attachment' }
 			Object.assign(fields, {
 				attachments: [...(fields.attachments ?? []), attachmentField],
 			})
 			this.#processDirectory(child, attachmentField, 'attachment')
 		} else if (child.name.indexOf(MSG_PREFIX_RECIPIENT) === 0) {
-			const recipientField: MSGMutableFieldData = { kind: 'recipient' }
+			const recipientField: MSGMutableFieldData = { category: 'recipient' }
 			Object.assign(fields, {
 				recipients: [...(fields.recipients ?? []), recipientField],
 			})
@@ -991,7 +991,7 @@ export class MSG implements MSGInterface {
 			const fieldType = this.#getDirectoryFieldType(child)
 			if (fieldType === MSG_FIELD_DIR_TYPE_INNER_MSG) {
 				const innerFields: MSGMutableFieldData = {
-					kind: 'msg',
+					category: 'msg',
 					attachments: [],
 					recipients: [],
 				}
@@ -1152,7 +1152,7 @@ export class MSG implements MSGInterface {
 			const childIndex = children[i]
 			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
-			if (child === undefined || child.type !== MSG_TYPE_DOCUMENT) continue
+			if (child === undefined || child.category !== MSG_CATEGORY_DOCUMENT) continue
 			if (child.name.indexOf(MSG_PREFIX_DOCUMENT) !== 0) continue
 
 			const value = child.name.substring(12).toLowerCase()
@@ -1234,7 +1234,7 @@ export class MSG implements MSGInterface {
 		const entries: MSGBurnerEntry[] = [
 			{
 				name: 'Root Entry',
-				type: MSG_TYPE_ROOT,
+				category: MSG_CATEGORY_ROOT,
 				children: [],
 				length: 0,
 			},
@@ -1264,7 +1264,7 @@ export class MSG implements MSGInterface {
 			const childIndex = children[i]
 			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
-			if (child === undefined || child.type !== MSG_TYPE_DOCUMENT) continue
+			if (child === undefined || child.category !== MSG_CATEGORY_DOCUMENT) continue
 
 			let provider = this.#readEntry.bind(this, child)
 			let length = child.sizeBlock
@@ -1279,7 +1279,7 @@ export class MSG implements MSGInterface {
 
 			this.#appendBurnerEntry(entries, parentIndex, {
 				name: child.name,
-				type: MSG_TYPE_DOCUMENT,
+				category: MSG_CATEGORY_DOCUMENT,
 				binaryProvider: provider,
 				length,
 			})
@@ -1296,12 +1296,12 @@ export class MSG implements MSGInterface {
 					const rootChild = this.#properties[rootChildIndex]
 					if (
 						rootChild !== undefined &&
-						rootChild.type === MSG_TYPE_DIRECTORY &&
+						rootChild.category === MSG_CATEGORY_DIRECTORY &&
 						rootChild.name === MSG_PREFIX_NAMEID
 					) {
 						const subIndex = this.#appendBurnerEntry(entries, parentIndex, {
 							name: rootChild.name,
-							type: MSG_TYPE_DIRECTORY,
+							category: MSG_CATEGORY_DIRECTORY,
 							children: [],
 							length: 0,
 						})
@@ -1316,11 +1316,11 @@ export class MSG implements MSGInterface {
 			const childIndex = children[i]
 			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
-			if (child === undefined || child.type !== MSG_TYPE_DIRECTORY) continue
+			if (child === undefined || child.category !== MSG_CATEGORY_DIRECTORY) continue
 
 			const subIndex = this.#appendBurnerEntry(entries, parentIndex, {
 				name: child.name,
-				type: MSG_TYPE_DIRECTORY,
+				category: MSG_CATEGORY_DIRECTORY,
 				children: [],
 				length: 0,
 			})
