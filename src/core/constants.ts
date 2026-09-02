@@ -3,92 +3,92 @@ import type { MSGFieldType } from './types.js'
 // === MSGReader
 
 /**
- * CFB magic header bytes (0xD0CF11E0A1B11AE1).
+ * Holds the CFB magic header bytes (0xD0CF11E0A1B11AE1).
  */
 export const MSG_FILE_HEADER = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
 
 /**
- * Sentinel for unused blocks in the FAT.
+ * Names the sentinel for unused blocks in the FAT.
  */
 export const MSG_UNUSED_BLOCK = -1
 
 /**
- * Sentinel for end-of-chain in the FAT.
+ * Names the sentinel for end-of-chain in the FAT.
  */
 export const MSG_END_OF_CHAIN = -2
 
 /**
- * Small sector size (512 bytes).
+ * Holds the small sector size (512 bytes).
  */
 export const MSG_S_BIG_BLOCK_SIZE = 0x0200
 
 /**
- * Small sector size mark in the header (byte at offset 30).
+ * Holds the small sector size mark in the header (byte at offset 30).
  */
 export const MSG_S_BIG_BLOCK_MARK = 9
 
 /**
- * Large sector size (4096 bytes).
+ * Holds the large sector size (4096 bytes).
  */
 export const MSG_L_BIG_BLOCK_SIZE = 0x1000
 
 /**
- * Large sector size mark in the header (byte at offset 30).
+ * Holds the large sector size mark in the header (byte at offset 30).
  */
 export const MSG_L_BIG_BLOCK_MARK = 12
 
 /**
- * Mini-stream sector size (64 bytes).
+ * Holds the mini-stream sector size (64 bytes).
  */
 export const MSG_SMALL_BLOCK_SIZE = 0x0040
 
 /**
- * Threshold below which data is stored in the mini-stream.
+ * Sets the threshold below which data is stored in the mini-stream.
  */
 export const MSG_BIG_BLOCK_MIN_DOC_SIZE = 0x1000
 
 /**
- * Header offset: property (directory) start sector.
+ * Locates the property (directory) start sector in the header.
  */
 export const MSG_HEADER_PROPERTY_START_OFFSET = 0x30
 
 /**
- * Header offset: BAT sector array start.
+ * Locates the BAT sector array start in the header.
  */
 export const MSG_HEADER_BAT_START_OFFSET = 0x4c
 
 /**
- * Header offset: BAT sector count.
+ * Locates the BAT sector count in the header.
  */
 export const MSG_HEADER_BAT_COUNT_OFFSET = 0x2c
 
 /**
- * Header offset: SBAT start sector.
+ * Locates the SBAT start sector in the header.
  */
 export const MSG_HEADER_SBAT_START_OFFSET = 0x3c
 
 /**
- * Header offset: SBAT sector count.
+ * Locates the SBAT sector count in the header.
  */
 export const MSG_HEADER_SBAT_COUNT_OFFSET = 0x40
 
 /**
- * Header offset: XBAT (DIFAT) start sector.
+ * Locates the XBAT (DIFAT) start sector in the header.
  */
 export const MSG_HEADER_XBAT_START_OFFSET = 0x44
 
 /**
- * Header offset: XBAT (DIFAT) sector count.
+ * Locates the XBAT (DIFAT) sector count in the header.
  */
 export const MSG_HEADER_XBAT_COUNT_OFFSET = 0x48
 
 /**
- * No child/sibling index sentinel.
+ * Names the no-child/sibling index sentinel.
  */
 export const MSG_PROP_NO_INDEX = -1
 
 /**
- * Maximum recursion depth accepted by the directory hierarchy builder
+ * Caps the recursion depth accepted by the directory hierarchy builder
  * (`MSGReader#buildHierarchy`). Defense-in-depth against a pathological
  * or hostile directory tree — the sibling-chain and visited-set guards
  * already bound each level, this caps the recursion depth itself.
@@ -96,88 +96,88 @@ export const MSG_PROP_NO_INDEX = -1
 export const MSG_MAX_HIERARCHY_DEPTH = 64
 
 /**
- * Directory entry size in bytes.
+ * Holds the directory entry size in bytes.
  */
 export const MSG_PROPERTY_SIZE = 0x0080
 
 /**
- * Offset within a directory entry: name byte length.
+ * Locates the name byte length within a directory entry.
  */
 export const MSG_PROP_NAME_SIZE_OFFSET = 0x40
 
 /**
- * Offset within a directory entry: object-category byte, mirroring the
+ * Locates the object-category byte within a directory entry, mirroring the
  * Compound File Binary object type field.
  */
 export const MSG_PROP_CATEGORY_OFFSET = 0x42
 
 /**
- * Offset within a directory entry: left sibling index.
+ * Locates the left sibling index within a directory entry.
  */
 export const MSG_PROP_PREVIOUS_PROPERTY_OFFSET = 0x44
 
 /**
- * Offset within a directory entry: right sibling index.
+ * Locates the right sibling index within a directory entry.
  */
 export const MSG_PROP_NEXT_PROPERTY_OFFSET = 0x48
 
 /**
- * Offset within a directory entry: child index.
+ * Locates the child index within a directory entry.
  */
 export const MSG_PROP_CHILD_PROPERTY_OFFSET = 0x4c
 
 /**
- * Offset within a directory entry: start sector of stream data.
+ * Locates the start sector of stream data within a directory entry.
  */
 export const MSG_PROP_START_BLOCK_OFFSET = 0x74
 
 /**
- * Offset within a directory entry: stream byte length.
+ * Locates the stream byte length within a directory entry.
  */
 export const MSG_PROP_SIZE_OFFSET = 0x78
 
 /**
- * Directory entry category: unallocated.
+ * Names the unallocated directory entry category.
  */
 export const MSG_CATEGORY_UNALLOCATED = 0
 
 /**
- * Directory entry category: storage (folder).
+ * Names the storage (folder) directory entry category.
  */
 export const MSG_CATEGORY_DIRECTORY = 1
 
 /**
- * Directory entry category: stream (document).
+ * Names the stream (document) directory entry category.
  */
 export const MSG_CATEGORY_DOCUMENT = 2
 
 /**
- * Directory entry category: root storage.
+ * Names the root storage directory entry category.
  */
 export const MSG_CATEGORY_ROOT = 5
 
 /**
- * Name prefix for attachment storage entries.
+ * Holds the name prefix for attachment storage entries.
  */
 export const MSG_PREFIX_ATTACHMENT = '__attach_version1.0'
 
 /**
- * Name prefix for recipient storage entries.
+ * Holds the name prefix for recipient storage entries.
  */
 export const MSG_PREFIX_RECIPIENT = '__recip_version1.0'
 
 /**
- * Name prefix for document (substg) stream entries.
+ * Holds the name prefix for document (substg) stream entries.
  */
 export const MSG_PREFIX_DOCUMENT = '__substg1.'
 
 /**
- * Name prefix for named property mapping storage.
+ * Holds the name prefix for named property mapping storage.
  */
 export const MSG_PREFIX_NAMEID = '__nameid_version1.0'
 
 /**
- * MAPI property tag to field name mapping.
+ * Maps a MAPI property tag to a field name.
  */
 export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = Object.freeze({
 	// email specific
@@ -246,7 +246,7 @@ export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = Object.f
 })
 
 /**
- * Full 8-char property tag to field name mapping (for compound tags).
+ * Maps a full 8-char property tag to a field name (for compound tags).
  */
 export const MSG_FIELD_FULL_NAME_MAPPING: Readonly<Record<string, string>> = Object.freeze({
 	'1013001f': 'bodyHTML',
@@ -254,7 +254,7 @@ export const MSG_FIELD_FULL_NAME_MAPPING: Readonly<Record<string, string>> = Obj
 })
 
 /**
- * MAPI property type tag to decode type mapping.
+ * Maps a MAPI property type tag to a decode type.
  */
 export const MSG_FIELD_TYPE_MAPPING: Readonly<Record<string, MSGFieldType>> = Object.freeze({
 	'001e': 'string',
@@ -266,32 +266,32 @@ export const MSG_FIELD_TYPE_MAPPING: Readonly<Record<string, MSGFieldType>> = Ob
 })
 
 /**
- * Attachment data class identifier.
+ * Identifies the attachment data class.
  */
 export const MSG_FIELD_CLASS_ATTACHMENT_DATA = '3701'
 
 /**
- * Directory field type indicating an embedded MSG.
+ * Names the directory field type indicating an embedded MSG.
  */
 export const MSG_FIELD_DIR_TYPE_INNER_MSG = '000d'
 
 /**
- * MAPI recipient type: TO.
+ * Names the TO MAPI recipient type.
  */
 export const MSG_MAPI_RECIPIENT_TO = 1
 
 /**
- * MAPI recipient type: CC.
+ * Names the CC MAPI recipient type.
  */
 export const MSG_MAPI_RECIPIENT_CC = 2
 
 /**
- * MAPI recipient type: BCC.
+ * Names the BCC MAPI recipient type.
  */
 export const MSG_MAPI_RECIPIENT_BCC = 3
 
 /**
- * PidLid property set GUID to LID-to-field-name mapping.
+ * Holds the PidLid property set GUID to LID-to-field-name mapping.
  * Maps well-known MAPI named property sets to their property
  * long IDs and corresponding field names on MSGFieldData.
  */
@@ -351,54 +351,54 @@ export const MSG_PIDLID_MAPPING: Readonly<Record<string, Readonly<Record<number,
 // === MSGBurner
 
 /**
- * Standard CFB sector size in bytes (512).
+ * Holds the standard CFB sector size in bytes (512).
  */
 export const MSG_BURNER_SECTOR_SIZE = 512
 
 /**
- * CFB mini-stream sector size in bytes (64).
+ * Holds the CFB mini-stream sector size in bytes (64).
  */
 export const MSG_BURNER_MINI_SECTOR_SIZE = 64
 
 /**
- * Threshold below which streams are stored in the mini-stream (4096).
+ * Sets the threshold below which streams are stored in the mini-stream (4096).
  */
 export const MSG_BURNER_MINI_STREAM_CUTOFF = 4096
 
 /**
- * Number of 32-bit integers per standard sector (128).
+ * Holds the number of 32-bit integers per standard sector (128).
  */
 export const MSG_BURNER_INTS_PER_SECTOR = MSG_BURNER_SECTOR_SIZE / 4
 
 /**
- * Maximum DIFAT entries stored in the CFB header (109).
+ * Caps the DIFAT entries stored in the CFB header (109).
  */
 export const MSG_BURNER_DIFAT_HEADER_SLOTS = 109
 
 /**
- * CFB directory entry size in bytes (128).
+ * Holds the CFB directory entry size in bytes (128).
  */
 export const MSG_BURNER_DIR_ENTRY_SIZE = 128
 
 /**
- * FAT sector marker: this sector holds FAT data (-3).
+ * Marks a sector as holding FAT data (-3).
  */
 export const MSG_BURNER_FAT_SECTOR_MARKER = -3
 
 /**
- * DIFAT sector marker: this sector holds DIFAT data (-4).
+ * Marks a sector as holding DIFAT data (-4).
  */
 export const MSG_BURNER_DIFAT_SECTOR_MARKER = -4
 
 /**
- * Maximum UTF-16 code units allowed in a CFB directory entry name (31).
+ * Caps the UTF-16 code units allowed in a CFB directory entry name (31).
  * The fixed 64-byte name field holds 32 UTF-16 units including the
  * NUL terminator, so the name itself is capped at 31 units.
  */
 export const MSG_BURNER_NAME_MAX = 31
 
 /**
- * Root entry CLSID for MSG compound files.
+ * Holds the root entry CLSID for MSG compound files.
  */
 export const MSG_BURNER_ROOT_CLSID = new Uint8Array([
 	0x0b, 0x0d, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
@@ -407,37 +407,37 @@ export const MSG_BURNER_ROOT_CLSID = new Uint8Array([
 // === EmailParser
 
 /**
- * File extensions recognized as RFC 2822 / MIME email files.
+ * Lists the file extensions recognized as RFC 2822 / MIME email files.
  */
 export const EML_EXTENSIONS: readonly string[] = Object.freeze(['.eml'])
 
 /**
- * File extensions recognized as Outlook binary email files.
+ * Lists the file extensions recognized as Outlook binary email files.
  */
 export const MSG_EXTENSIONS: readonly string[] = Object.freeze(['.msg'])
 
 /**
- * MIME types recognized as RFC 2822 / MIME email files.
+ * Lists the MIME types recognized as RFC 2822 / MIME email files.
  */
 export const EML_MIME_TYPES: readonly string[] = Object.freeze(['message/rfc822'])
 
 /**
- * MIME types recognized as Outlook binary email files.
+ * Lists the MIME types recognized as Outlook binary email files.
  */
 export const MSG_MIME_TYPES: readonly string[] = Object.freeze(['application/vnd.ms-outlook'])
 
 /**
- * Default charset for decoding MIME part bodies.
+ * Names the default charset for decoding MIME part bodies.
  */
 export const FALLBACK_CHARSET = 'utf-8'
 
 /**
- * Default file name for attachments without an explicit name.
+ * Names the default file name for attachments without an explicit name.
  */
 export const FALLBACK_ATTACHMENT_NAME = 'attachment'
 
 /**
- * Common MIME types to file extensions mapping.
+ * Maps common MIME types to file extensions.
  * Used for inferring the correct extension during file extraction.
  */
 export const MIME_EXTENSIONS: ReadonlyMap<string, string> = new Map([
@@ -463,14 +463,14 @@ export const MIME_EXTENSIONS: ReadonlyMap<string, string> = new Map([
 ])
 
 /**
- * Maximum multipart nesting depth accepted by `parseMIMEPart`.
+ * Caps the multipart nesting depth accepted by `parseMIMEPart`.
  * Guards against pathological or hostile MIME trees causing
  * unbounded recursion.
  */
 export const MIME_MAX_DEPTH = 50
 
 /**
- * Minimum valid code point for each UTF-8 sequence length, keyed by the
+ * Holds the minimum valid code point for each UTF-8 sequence length, keyed by the
  * number of continuation bytes (1, 2, or 3). Enforces the WHATWG
  * requirement that a sequence encode the shortest possible form — an
  * overlong encoding (a code point below its sequence's minimum) is
@@ -483,7 +483,7 @@ export const UTF8_SEQUENCE_MINIMUM: Readonly<Record<number, number>> = Object.fr
 })
 
 /**
- * Windows-1252 high-byte (0x80-0x9F) to Unicode code point lookup.
+ * Holds the Windows-1252 high-byte (0x80-0x9F) to Unicode code point lookup.
  * Index `n` maps byte `0x80 + n` to its Unicode code point; entries
  * that Windows-1252 leaves undefined map to the byte's own value
  * (C1 control code passthrough) per the WHATWG encoding standard.

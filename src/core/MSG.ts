@@ -1,6 +1,4 @@
 /**
- * MSG
- *
  * Parses .eml (RFC 2822 / MIME) and .msg (Outlook CFB/OLE2 compound
  * binary) files into a structured email chain, and — for .msg input —
  * exposes the raw MAPI field tree plus attachment/burn access. Parsing
@@ -125,7 +123,7 @@ export class MSG implements MSGInterface {
 	#innerMSGDirectories: Record<number, MSGDirectoryEntry> = {}
 
 	/**
-	 * Create and eagerly parse an MSG/EML instance.
+	 * Creates and eagerly parses an MSG/EML instance.
 	 *
 	 * @param input - Raw MSG bytes, or an {@link EmailInput} for EML/MSG parsing
 	 * @param options - Parser configuration
@@ -201,7 +199,7 @@ export class MSG implements MSGInterface {
 	}
 
 	/**
-	 * Current parser configuration.
+	 * Returns the current parser configuration.
 	 *
 	 * @returns A copy of the configured {@link MSGOptions} — the internal
 	 * reference is never leaked
@@ -211,7 +209,7 @@ export class MSG implements MSGInterface {
 	}
 
 	/**
-	 * The parsed email chain. The detected format is available via
+	 * Holds the parsed email chain. The detected format is available via
 	 * `chain.format`.
 	 */
 	get chain(): EmailChain {
@@ -219,7 +217,7 @@ export class MSG implements MSGInterface {
 	}
 
 	/**
-	 * Parsed MSG field data, or `undefined` when the parsed format is
+	 * Holds parsed MSG field data, or `undefined` when the parsed format is
 	 * `'eml'`.
 	 */
 	get fields(): MSGFieldData | undefined {
@@ -227,7 +225,7 @@ export class MSG implements MSGInterface {
 	}
 
 	/**
-	 * Read attachment binary content by index.
+	 * Reads attachment binary content by index.
 	 *
 	 * @param index - Zero-based index into the parsed attachment list
 	 * @returns File name and raw binary content
@@ -281,7 +279,7 @@ export class MSG implements MSGInterface {
 	}
 
 	/**
-	 * Rebuild the parsed MSG as a standalone CFB/.msg binary.
+	 * Rebuilds the parsed MSG as a standalone CFB/.msg binary.
 	 *
 	 * @returns Complete CFB byte stream
 	 * @throws {@link MSGError} with code `BURN` when the parsed structure

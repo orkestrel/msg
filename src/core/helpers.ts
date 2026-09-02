@@ -15,7 +15,7 @@ import {
 // === Result Helpers
 
 /**
- * Construct a {@link Success} wrapping a value.
+ * Constructs a {@link Success} wrapping a value.
  *
  * @param value - The value to wrap
  * @returns A `Success<T>` result
@@ -30,7 +30,7 @@ export function success<T>(value: T): Success<T> {
 }
 
 /**
- * Construct a {@link Failure} wrapping an error.
+ * Constructs a {@link Failure} wrapping an error.
  *
  * @param error - The error to wrap
  * @returns A `Failure<E>` result
@@ -45,20 +45,20 @@ export function failure<E>(error: E): Failure<E> {
 }
 
 /**
- * Narrow a Result to Success.
+ * Narrows a Result to Success.
  *
  * @param result - Result to check
- * @returns True when result is Success
+ * @returns True if result is Success; false otherwise
  */
 export function isSuccess<T, E>(result: Result<T, E>): result is Success<T> {
 	return result.success
 }
 
 /**
- * Narrow a Result to Failure.
+ * Narrows a Result to Failure.
  *
  * @param result - Result to check
- * @returns True when result is Failure
+ * @returns True if result is Failure; false otherwise
  */
 export function isFailure<T, E>(result: Result<T, E>): result is Failure<E> {
 	return !result.success
@@ -67,7 +67,7 @@ export function isFailure<T, E>(result: Result<T, E>): result is Failure<E> {
 // === MSG Helpers
 
 /**
- * Remove trailing null characters from a string.
+ * Removes trailing null characters from a string.
  *
  * @param text - Input string
  * @returns String with trailing nulls removed
@@ -81,7 +81,7 @@ export function removeTrailingNull(text: string): string {
 }
 
 /**
- * Read a UTF-16LE string from a DataView.
+ * Reads a UTF-16LE string from a DataView.
  *
  * @param view - DataView to read from
  * @param offset - Byte offset to start reading
@@ -108,7 +108,7 @@ export function readUTF16String(view: DataView, offset: number, charCount: numbe
 }
 
 /**
- * Read a non-Unicode (PT_STRING8) string from a byte array using a
+ * Reads a non-Unicode (PT_STRING8) string from a byte array using a
  * pure-ES decoder — no `TextDecoder` dependency, so this stays usable
  * in the core's DOM/Node-free environment.
  *
@@ -133,7 +133,7 @@ export function readANSIString(data: Uint8Array, encoding?: MSGEncoding): string
 }
 
 /**
- * Convert a Windows FILETIME (100-ns intervals since 1601-01-01) to a UTC date string.
+ * Converts a Windows FILETIME (100-ns intervals since 1601-01-01) to a UTC date string.
  * Combines the low/high 32-bit halves with `BigInt` so the 64-bit interval
  * count never loses precision to float64 rounding.
  *
@@ -148,7 +148,7 @@ export function fileTimeToUTCString(low: number, high: number): string {
 }
 
 /**
- * Convert a number to a lowercase hex string with specified padding.
+ * Converts a number to a lowercase hex string with specified padding.
  *
  * @param value - Number to convert
  * @param length - Minimum hex string length (zero-padded)
@@ -166,7 +166,7 @@ export function toHexLower(value: number, length: number): string {
 }
 
 /**
- * Stringify a mixed-endian Microsoft UUID from a byte array.
+ * Stringifies a mixed-endian Microsoft UUID from a byte array.
  *
  * @param data - Byte array containing the UUID
  * @param offset - Byte offset to start reading
@@ -189,10 +189,10 @@ export function msftUUIDStringify(data: Uint8Array, offset: number): string {
 }
 
 /**
- * Validate that a DataView starts with the CFB magic header.
+ * Validates that a DataView starts with the CFB magic header.
  *
  * @param view - DataView to check
- * @returns True when the first 8 bytes match the CFB signature
+ * @returns True if the first 8 bytes match the CFB signature; false otherwise
  */
 export function isMSGFile(view: DataView): boolean {
 	if (view.byteLength < MSG_FILE_HEADER.length) return false
@@ -205,7 +205,7 @@ export function isMSGFile(view: DataView): boolean {
 // === MSGBurner Helpers
 
 /**
- * Round a value up to the nearest multiple of a boundary.
+ * Rounds a value up to the nearest multiple of a boundary.
  *
  * @param value - Number to round
  * @param boundary - Must be a power of 2
@@ -216,7 +216,7 @@ export function roundUpToMultiple(value: number, boundary: number): number {
 }
 
 /**
- * Compute how many sectors are needed to hold a given byte count.
+ * Computes how many sectors are needed to hold a given byte count.
  *
  * @param bytes - Total byte count
  * @param sectorSize - Sector size in bytes
@@ -228,7 +228,7 @@ export function sectorsNeeded(bytes: number, sectorSize: number): number {
 }
 
 /**
- * CFB-compliant directory name comparator.
+ * Orders two directory names as the compound file format requires.
  * Compares by UTF-16 length first, then by uppercased code points.
  *
  * @param a - First name
@@ -248,7 +248,7 @@ export function compareCFBName(a: string, b: string): number {
 // === Pure-ES Encoding Decoders
 
 /**
- * Decode a Base64 string into raw bytes without relying on `atob`.
+ * Decodes a Base64 string into raw bytes without relying on `atob`.
  * Ignores ASCII whitespace and tolerates missing padding.
  *
  * @param text - Base64-encoded string
@@ -285,7 +285,7 @@ export function decodeBase64(text: string): Uint8Array {
 }
 
 /**
- * Encode a string into UTF-8 bytes, handling surrogate pairs.
+ * Encodes a string into UTF-8 bytes, handling surrogate pairs.
  * A lone (unpaired) surrogate encodes as U+FFFD.
  *
  * @param text - String to encode
@@ -334,7 +334,7 @@ export function encodeUTF8(text: string): Uint8Array {
 }
 
 /**
- * Decode UTF-8 bytes into a string, WHATWG-style: an invalid byte
+ * Decodes UTF-8 bytes into a string, WHATWG-style: an invalid byte
  * sequence decodes as U+FFFD rather than throwing. Rejects overlong
  * encodings, surrogate code points (0xD800-0xDFFF), and code points
  * beyond 0x10FFFF — each invalid sequence yields exactly one U+FFFD
@@ -432,7 +432,7 @@ export function decodeUTF8(bytes: Uint8Array): string {
 }
 
 /**
- * Decode Latin-1 (ISO-8859-1) bytes into a string, byte-for-code-point.
+ * Decodes Latin-1 (ISO-8859-1) bytes into a string, byte-for-code-point.
  *
  * @param bytes - Latin-1 byte array
  * @returns Decoded string
@@ -451,7 +451,7 @@ export function decodeLatin1(bytes: Uint8Array): string {
 }
 
 /**
- * Decode Windows-1252 bytes into a string. Identical to {@link decodeLatin1}
+ * Decodes Windows-1252 bytes into a string. Identical to {@link decodeLatin1}
  * except for the 0x80-0x9F range, which maps through {@link WINDOWS_1252_HIGH}.
  *
  * @param bytes - Windows-1252 byte array
@@ -479,7 +479,7 @@ export function decodeWindows1252(bytes: Uint8Array): string {
 }
 
 /**
- * Resolve a free-form charset label (as seen in a MIME `charset` parameter)
+ * Resolves a free-form charset label (as seen in a MIME `charset` parameter)
  * to a supported {@link MSGEncoding}. Unknown or absent labels fall back
  * to {@link FALLBACK_CHARSET}.
  *
@@ -512,7 +512,7 @@ export function resolveEncoding(label: string | undefined): MSGEncoding {
 // === EmailParser Helpers
 
 /**
- * Derive the EmailFormat from a file name and/or MIME type.
+ * Derives the EmailFormat from a file name and/or MIME type.
  * Returns undefined when the format cannot be determined.
  *
  * @param name - File name to inspect
@@ -545,7 +545,7 @@ export function detectFormat(
 }
 
 /**
- * Parse headers from a raw RFC 2822 / MIME header text block.
+ * Parses headers from a raw RFC 2822 / MIME header text block.
  *
  * @param text - Raw header text
  * @returns Map of parsed header objects
@@ -594,7 +594,7 @@ export function parseMIMEHeaders(text: string): ReadonlyMap<string, MIMEHeader> 
 }
 
 /**
- * Decode a MIME-encoded body string into a raw byte array.
+ * Decodes a MIME-encoded body string into a raw byte array.
  *
  * @param body - Raw encoded string
  * @param encoding - Encoding type (e.g., 'base64', 'quoted-printable')
@@ -634,7 +634,7 @@ export function decodeMIMEEncoding(body: string, encoding: string): Uint8Array {
 }
 
 /**
- * Decode a MIME-encoded body into a text string based on an arbitrary
+ * Decodes a MIME-encoded body into a text string based on an arbitrary
  * charset label, resolved via {@link resolveEncoding}.
  *
  * @param body - Raw encoded string
@@ -652,7 +652,7 @@ export function decodeMIMEText(body: string, encoding: string, charset: string):
 }
 
 /**
- * Decode RFC 2047 encoded words in header values.
+ * Decodes RFC 2047 encoded words in header values.
  * Handles both Base64 (B) and Quoted-Printable (Q) forms.
  *
  * @param text - Header value string potentially containing encoded words
@@ -688,7 +688,7 @@ export function decodeMIMEWords(text: string): string {
 }
 
 /**
- * Format a name and email into a standard composite address.
+ * Formats a name and email into a standard composite address.
  *
  * @param name - Display name
  * @param email - Email address

@@ -35,7 +35,7 @@ import {
 } from './helpers.js'
 
 /**
- * Reconstitute a valid CFB (Compound Binary File) from a flat list of
+ * Reconstitutes a valid CFB (Compound Binary File) from a flat list of
  * {@link MSGBurnerEntry} descriptors — root storage at index 0, its
  * children reachable through `children` indices.
  *
@@ -419,7 +419,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 // === Email Shapers
 
 /**
- * Extract a single EmailMessage from a parsed MSG source.
+ * Extracts a single EmailMessage from a parsed MSG source.
  * Reads field data and attachments from the given source.
  *
  * Each attachment is read independently: a corrupt attachment throws
@@ -486,7 +486,7 @@ export function extractMessageFromMSG(reader: MSGSourceInterface): EmailMessage 
 }
 
 /**
- * Extract a single EmailMessage from a top-level MIMEPart.
+ * Extracts a single EmailMessage from a top-level MIMEPart.
  * Walks the full MIME tree to collect text, HTML, and attachments.
  *
  * @param part - Root MIMEPart from parseMIMEPart

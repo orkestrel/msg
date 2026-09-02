@@ -6,7 +6,7 @@ import { parseMIMEHeaders } from './helpers.js'
 // === MIME Parsers
 
 /**
- * Parse a raw RFC 2822 / MIME text string into a MIMEPart tree.
+ * Parses a raw RFC 2822 / MIME text string into a MIMEPart tree.
  * Line endings are normalised to \n before processing. Recursion is
  * capped at {@link MIME_MAX_DEPTH} to guard against a hostile or
  * pathological multipart nesting cycle.

@@ -7,7 +7,7 @@ import type { MSGErrorCode } from './types.js'
 // file never throws across that boundary.
 
 /**
- * An error thrown or returned by the MSG/EML parsing and burning surfaces.
+ * Represents an error thrown or returned by the MSG/EML parsing and burning surfaces.
  *
  * @remarks
  * Carries a machine-readable {@link MSGErrorCode} so a `catch` (or a
@@ -35,10 +35,10 @@ export class MSGError extends Error {
 }
 
 /**
- * Narrow an unknown caught (or `Failure.error`) value to an {@link MSGError}.
+ * Narrows an unknown caught (or `Failure.error`) value to an {@link MSGError}.
  *
  * @param value - The value to test (typically a `catch` binding or a `Result.error`)
- * @returns `true` when `value` is an {@link MSGError}
+ * @returns True if `value` is an {@link MSGError}; false otherwise
  *
  * @example
  * ```ts

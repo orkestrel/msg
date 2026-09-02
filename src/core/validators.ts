@@ -1,30 +1,30 @@
 import type { EmailAttachment, EmailChain, EmailFormat, EmailMessage } from './types.js'
 
 /**
- * Narrow an unknown value to a plain record.
+ * Narrows an unknown value to a plain record.
  *
  * @param value - Value to check
- * @returns True when value is a non-null, non-array object
+ * @returns True if value is a non-null, non-array object; false otherwise
  */
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
- * Narrow an unknown value to a valid EmailFormat.
+ * Narrows an unknown value to a valid EmailFormat.
  *
  * @param value - Value to check
- * @returns True when value is 'eml' or 'msg'
+ * @returns True if value is 'eml' or 'msg'; false otherwise
  */
 export function isEmailFormat(value: unknown): value is EmailFormat {
 	return value === 'eml' || value === 'msg'
 }
 
 /**
- * Type guard for {@link EmailAttachment}.
+ * Narrows an unknown value to {@link EmailAttachment}.
  *
  * @param value - Value to test
- * @returns `true` when `value` structurally matches {@link EmailAttachment}
+ * @returns True if `value` structurally matches {@link EmailAttachment}; false otherwise
  */
 export function isEmailAttachment(value: unknown): value is EmailAttachment {
 	if (!isRecord(value)) return false
@@ -37,10 +37,10 @@ export function isEmailAttachment(value: unknown): value is EmailAttachment {
 }
 
 /**
- * Type guard for {@link EmailMessage}.
+ * Narrows an unknown value to {@link EmailMessage}.
  *
  * @param value - Value to test
- * @returns `true` when `value` structurally matches {@link EmailMessage}
+ * @returns True if `value` structurally matches {@link EmailMessage}; false otherwise
  */
 export function isEmailMessage(value: unknown): value is EmailMessage {
 	if (!isRecord(value)) return false
@@ -61,10 +61,10 @@ export function isEmailMessage(value: unknown): value is EmailMessage {
 }
 
 /**
- * Type guard for {@link EmailChain}.
+ * Narrows an unknown value to {@link EmailChain}.
  *
  * @param value - Value to test
- * @returns `true` when `value` structurally matches {@link EmailChain}
+ * @returns True if `value` structurally matches {@link EmailChain}; false otherwise
  */
 export function isEmailChain(value: unknown): value is EmailChain {
 	if (!isRecord(value)) return false

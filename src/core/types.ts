@@ -1,7 +1,7 @@
 // === Result Pattern
 
 /**
- * Successful operation result.
+ * Represents a successful operation result.
  */
 export interface Success<T> {
 	readonly success: true
@@ -9,7 +9,7 @@ export interface Success<T> {
 }
 
 /**
- * Failed operation result.
+ * Represents a failed operation result.
  */
 export interface Failure<E> {
 	readonly success: false
@@ -17,14 +17,14 @@ export interface Failure<E> {
 }
 
 /**
- * Discriminated union for operations that can succeed or fail safely.
+ * Represents a discriminated union for operations that can succeed or fail safely.
  */
 export type Result<T, E = Error> = Success<T> | Failure<E>
 
 // === Encoding
 
 /**
- * Supported text encoding for decoding non-Unicode MSG strings and
+ * Names a supported text encoding for decoding non-Unicode MSG strings and
  * MIME part bodies.
  */
 export type MSGEncoding = 'utf-8' | 'utf-16le' | 'windows-1252' | 'latin1'
@@ -32,7 +32,7 @@ export type MSGEncoding = 'utf-8' | 'utf-16le' | 'windows-1252' | 'latin1'
 // === MSGError
 
 /**
- * Machine-readable classification for an {@link MSGError}.
+ * Names a machine-readable classification for an {@link MSGError}.
  *
  * @remarks
  * - `UNSUPPORTED` — the input is not a recognized MSG/EML format
@@ -46,17 +46,17 @@ export type MSGErrorCode = 'UNSUPPORTED' | 'MALFORMED' | 'CYCLE' | 'RANGE' | 'BU
 // === MSGReader
 
 /**
- * MAPI property data type tag.
+ * Names a MAPI property data type tag.
  */
 export type MSGFieldType = 'string' | 'unicode' | 'binary' | 'time' | 'integer' | 'boolean'
 
 /**
- * Recipient role in a message.
+ * Names a recipient role in a message.
  */
 export type MSGRecipientRole = 'to' | 'cc' | 'bcc'
 
 /**
- * CFB directory entry describing a storage or stream in the compound file.
+ * Represents a CFB directory entry describing a storage or stream in the compound file.
  *
  * @remarks
  * - `category` — the entry's object-category byte, mirroring the Compound File
@@ -76,7 +76,7 @@ export interface MSGDirectoryEntry {
 }
 
 /**
- * Internal mutable accumulator used during MSG field extraction.
+ * Represents an internal mutable accumulator used during MSG field extraction.
  * Properties are assigned dynamically via index signature and
  * narrowed to the readonly {@link MSGFieldData} at the public boundary.
  */
@@ -93,7 +93,7 @@ export interface MSGMutableFieldData {
 }
 
 /**
- * Resolved named property entry from the __nameid_version1.0 storage.
+ * Represents a resolved named property entry from the __nameid_version1.0 storage.
  */
 export interface MSGNameIdEntry {
 	readonly useName: boolean
@@ -103,7 +103,7 @@ export interface MSGNameIdEntry {
 }
 
 /**
- * CFB entry descriptor for the MSG burner (CFB binary writer).
+ * Describes a CFB entry for the MSG burner (CFB binary writer).
  * Entries form a flat list starting with the root storage at index 0.
  *
  * @remarks
@@ -120,7 +120,7 @@ export interface MSGBurnerEntry {
 }
 
 /**
- * Internal lite entry with tree metadata used during CFB burn.
+ * Represents an internal lite entry with tree metadata used during CFB burn.
  * Tracks red-black coloring and sector allocation alongside
  * the source MSGBurnerEntry.
  */
@@ -135,7 +135,7 @@ export interface MSGBurnerLiteEntry {
 }
 
 /**
- * Parsed field data extracted from an MSG file.
+ * Holds parsed field data extracted from an MSG file.
  * Represents the root message, an attachment, or a recipient.
  *
  * @remarks
@@ -270,7 +270,7 @@ export interface MSGFieldData {
 }
 
 /**
- * Extracted attachment content from an MSG file.
+ * Holds extracted attachment content from an MSG file.
  *
  * @remarks
  * - `fileName` — the attachment file name
@@ -282,7 +282,7 @@ export interface MSGAttachment {
 }
 
 /**
- * Parsed MSG source an email shaper reads from: the field tree plus
+ * Represents a parsed MSG source an email shaper reads from: the field tree plus
  * indexed attachment access.
  *
  * @remarks
@@ -292,14 +292,14 @@ export interface MSGAttachment {
  */
 export interface MSGSourceInterface {
 	/**
-	 * Read the parsed MAPI field tree.
+	 * Reads the parsed MAPI field tree.
 	 *
 	 * @returns The root message's field data
 	 */
 	parse(): MSGFieldData
 
 	/**
-	 * Read attachment binary content by index.
+	 * Reads attachment binary content by index.
 	 *
 	 * @param index - Zero-based index into the parsed attachment list
 	 * @returns File name and raw binary content
@@ -310,12 +310,12 @@ export interface MSGSourceInterface {
 // === EmailParser
 
 /**
- * Supported email file format.
+ * Names a supported email file format.
  */
 export type EmailFormat = 'eml' | 'msg'
 
 /**
- * Parsed MIME header with value and parameter map.
+ * Represents a parsed MIME header with value and parameter map.
  *
  * @remarks
  * - `value` — primary header value (before first semicolon)
@@ -327,7 +327,7 @@ export interface MIMEHeader {
 }
 
 /**
- * Recursive MIME part tree node.
+ * Represents a recursive MIME part tree node.
  *
  * @remarks
  * - `headers` — parsed header map keyed by lowercase name
@@ -341,7 +341,7 @@ export interface MIMEPart {
 }
 
 /**
- * Extracted attachment from an email message.
+ * Represents an attachment extracted from an email message.
  *
  * @remarks
  * - `name` — attachment file name
@@ -357,7 +357,7 @@ export interface EmailAttachment {
 }
 
 /**
- * Structured email message extracted from a parsed file.
+ * Represents a structured email message extracted from a parsed file.
  *
  * @remarks
  * - `from` — sender address string
@@ -381,7 +381,7 @@ export interface EmailMessage {
 }
 
 /**
- * Parsed email chain from a single file.
+ * Represents a parsed email chain from a single file.
  *
  * @remarks
  * - `format` — detected file format ('eml' or 'msg')
@@ -393,7 +393,7 @@ export interface EmailChain {
 }
 
 /**
- * Raw email input handed to an EmailParser.
+ * Represents raw email input handed to an EmailParser.
  *
  * @remarks
  * - `bytes` — raw file content
@@ -409,13 +409,13 @@ export interface EmailInput {
 // === MSG
 
 /**
- * Raw input accepted by {@link createMSG}: binary MSG bytes or an
+ * Represents raw input accepted by {@link createMSG}: binary MSG bytes or an
  * {@link EmailInput} for EML/MSG email parsing.
  */
 export type MSGInput = Uint8Array | ArrayBuffer | EmailInput
 
 /**
- * Configuration for creating an {@link MSGInterface}.
+ * Configures the creation of an {@link MSGInterface}.
  *
  * @remarks
  * - `encoding` — encoding for non-Unicode strings and MIME part bodies (default `'windows-1252'`)
@@ -425,7 +425,7 @@ export interface MSGOptions {
 }
 
 /**
- * Public interface for a parsed MSG/EML file.
+ * Exposes the public surface of a parsed MSG/EML file.
  *
  * @remarks
  * - `options` — configuration used to parse this instance
@@ -440,7 +440,7 @@ export interface MSGInterface {
 	readonly fields: MSGFieldData | undefined
 
 	/**
-	 * Read attachment binary content by index.
+	 * Reads attachment binary content by index.
 	 *
 	 * @param index - Zero-based index into the parsed attachment list
 	 * @returns File name and raw binary content
@@ -449,7 +449,7 @@ export interface MSGInterface {
 	attachment(index: number): MSGAttachment
 
 	/**
-	 * Rebuild the parsed MSG as a standalone CFB/.msg binary.
+	 * Rebuilds the parsed MSG as a standalone CFB/.msg binary.
 	 *
 	 * @returns Complete CFB byte stream
 	 * @throws {@link MSGError} with code `BURN` when the parsed structure

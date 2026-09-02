@@ -7,7 +7,7 @@ import { isMSGError } from './errors.js'
 // === MSG
 
 /**
- * Create a new {@link MSGInterface} for the given .eml or .msg input.
+ * Creates a new {@link MSGInterface} for the given .eml or .msg input.
  *
  * @remarks
  * Unlike `new MSG(...)`, which parses eagerly and throws a typed
