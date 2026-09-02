@@ -67,7 +67,7 @@ eagerly and throws `MSGError` on malformed or unsupported input — use
 
 For the full surface — the `MSG` class, its supporting types (`EmailChain`,
 `EmailMessage`, `EmailAttachment`, `MSGDirectoryEntry`, and friends), and the
-CFB/MIME formats it implements — see [`guides/src/msg.md`](guides/src/msg.md).
+CFB/MIME formats it implements — see [`guides/msg.md`](guides/msg.md).
 
 ## Package
 
