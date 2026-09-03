@@ -30,8 +30,8 @@ import {
 	decodeMIMEEncoding,
 	decodeMIMEText,
 	decodeMIMEWords,
+	computeSectors,
 	formatEmailAddress,
-	sectorsNeeded,
 } from './helpers.js'
 
 /**
@@ -189,7 +189,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	const fat: number[] = []
 	const miniFat: number[] = []
 
-	const directoryCount = sectorsNeeded(
+	const directoryCount = computeSectors(
 		MSG_BURNER_DIR_ENTRY_SIZE * liteEntries.length,
 		MSG_BURNER_SECTOR_SIZE,
 	)
@@ -203,7 +203,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		if (liteEntry.entry.category !== MSG_CATEGORY_DOCUMENT || liteEntry.mini) continue
 		let firstSector = MSG_END_OF_CHAIN
 		if (liteEntry.entry.length !== 0) {
-			const count = sectorsNeeded(liteEntry.entry.length, MSG_BURNER_SECTOR_SIZE)
+			const count = computeSectors(liteEntry.entry.length, MSG_BURNER_SECTOR_SIZE)
 			firstSector = fat.length
 			for (let offset = 0; offset < count; offset++) {
 				const next = offset + 1 === count ? MSG_END_OF_CHAIN : firstSector + offset + 1
@@ -217,7 +217,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		if (liteEntry.entry.category !== MSG_CATEGORY_DOCUMENT || !liteEntry.mini) continue
 		let firstSector = MSG_END_OF_CHAIN
 		if (liteEntry.entry.length !== 0) {
-			const count = sectorsNeeded(liteEntry.entry.length, MSG_BURNER_MINI_SECTOR_SIZE)
+			const count = computeSectors(liteEntry.entry.length, MSG_BURNER_MINI_SECTOR_SIZE)
 			firstSector = miniFat.length
 			for (let offset = 0; offset < count; offset++) {
 				const next = offset + 1 === count ? MSG_END_OF_CHAIN : firstSector + offset + 1
@@ -227,7 +227,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		liteEntries[index] = { ...liteEntry, firstSector }
 	}
 
-	const numMiniFatSectors = sectorsNeeded(4 * miniFat.length, MSG_BURNER_SECTOR_SIZE)
+	const numMiniFatSectors = computeSectors(4 * miniFat.length, MSG_BURNER_SECTOR_SIZE)
 	const firstMiniFatSector = numMiniFatSectors === 0 ? MSG_END_OF_CHAIN : fat.length
 	for (let index = 0; index < numMiniFatSectors; index++) {
 		const next = index + 1 === numMiniFatSectors ? MSG_END_OF_CHAIN : firstMiniFatSector + index + 1
@@ -235,7 +235,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	}
 
 	const bytesMiniFat = MSG_BURNER_MINI_SECTOR_SIZE * miniFat.length
-	const miniDataCount = bytesMiniFat === 0 ? 0 : sectorsNeeded(bytesMiniFat, MSG_BURNER_SECTOR_SIZE)
+	const miniDataCount = bytesMiniFat === 0 ? 0 : computeSectors(bytesMiniFat, MSG_BURNER_SECTOR_SIZE)
 	const firstMiniDataSector = miniDataCount === 0 ? MSG_END_OF_CHAIN : fat.length
 	for (let index = 0; index < miniDataCount; index++) {
 		const next = index + 1 === miniDataCount ? MSG_END_OF_CHAIN : firstMiniDataSector + index + 1
@@ -254,7 +254,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	let numFatSectors = 0
 	let numDifatSectors = 0
 	for (;;) {
-		const nextFatSectors = sectorsNeeded(
+		const nextFatSectors = computeSectors(
 			4 * (fat.length + numFatSectors + numDifatSectors),
 			MSG_BURNER_SECTOR_SIZE,
 		)
@@ -366,8 +366,8 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 			!liteEntry.mini &&
 			liteEntry.entry.binaryProvider !== undefined
 		) {
-			const data = liteEntry.entry.binaryProvider()
-			bytes.set(data, MSG_BURNER_SECTOR_SIZE * (1 + liteEntry.firstSector))
+			const stream = liteEntry.entry.binaryProvider()
+			bytes.set(stream, MSG_BURNER_SECTOR_SIZE * (1 + liteEntry.firstSector))
 		}
 	}
 
@@ -378,9 +378,9 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 				liteEntry.mini &&
 				liteEntry.entry.binaryProvider !== undefined
 			) {
-				const data = liteEntry.entry.binaryProvider()
+				const stream = liteEntry.entry.binaryProvider()
 				bytes.set(
-					data,
+					stream,
 					MSG_BURNER_SECTOR_SIZE * (1 + firstMiniDataSector) +
 						MSG_BURNER_MINI_SECTOR_SIZE * liteEntry.firstSector,
 				)
@@ -431,11 +431,11 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
  * @returns Structured EmailMessage
  */
 export function extractMessageFromMSG(reader: MSGSourceInterface): EmailMessage {
-	const data = reader.parse()
+	const fields = reader.parse()
 
-	const from = formatEmailAddress(data.senderName, data.senderSMTPAddress ?? data.senderEmail)
+	const from = formatEmailAddress(fields.senderName, fields.senderSMTPAddress ?? fields.senderEmail)
 
-	const recipients = data.recipients ?? []
+	const recipients = fields.recipients ?? []
 	const to = recipients
 		.filter((r) => r.recipientRole === 'to')
 		.map((r) => formatEmailAddress(r.name, r.smtpAddress ?? r.email))
@@ -445,7 +445,7 @@ export function extractMessageFromMSG(reader: MSGSourceInterface): EmailMessage 
 		.map((r) => formatEmailAddress(r.name, r.smtpAddress ?? r.email))
 		.filter((s) => s.length > 0)
 
-	const rawDate = data.messageDeliveryTime ?? data.clientSubmitTime
+	const rawDate = fields.messageDeliveryTime ?? fields.clientSubmitTime
 	let date: Date | undefined
 	if (rawDate !== undefined) {
 		const parsed = new Date(rawDate)
@@ -453,7 +453,7 @@ export function extractMessageFromMSG(reader: MSGSourceInterface): EmailMessage 
 	}
 
 	const attachments: EmailAttachment[] = []
-	const attachmentFields = data.attachments ?? []
+	const attachmentFields = fields.attachments ?? []
 	for (let i = 0; i < attachmentFields.length; i++) {
 		const attachment = attachmentFields[i]
 		if (attachment === undefined) continue
@@ -462,10 +462,9 @@ export function extractMessageFromMSG(reader: MSGSourceInterface): EmailMessage 
 		try {
 			const extracted = reader.attachment(i)
 			attachments.push({
-				name: extracted.fileName,
+				name: extracted.name,
 				mimeType: attachment.mimeType ?? 'application/octet-stream',
-				size: extracted.content.length,
-				bytes: extracted.content,
+				bytes: extracted.bytes,
 			})
 		} catch {
 			// A single corrupt attachment stream must not fail the whole message.
@@ -477,10 +476,10 @@ export function extractMessageFromMSG(reader: MSGSourceInterface): EmailMessage 
 		from,
 		to,
 		cc,
-		subject: data.subject ?? '',
+		subject: fields.subject ?? '',
 		date,
-		text: data.body ?? '',
-		html: data.bodyHTML ?? '',
+		text: fields.body ?? '',
+		html: fields.bodyHTML ?? '',
 		attachments,
 	}
 }
@@ -553,7 +552,6 @@ export function extractMessage(part: MIMEPart): EmailMessage {
 			attachments.push({
 				name: decodeMIMEWords(name),
 				mimeType: primaryType,
-				size: bytes.length,
 				bytes,
 			})
 			continue
@@ -576,7 +574,6 @@ export function extractMessage(part: MIMEPart): EmailMessage {
 			attachments.push({
 				name: decodeMIMEWords(inlineName),
 				mimeType: primaryType,
-				size: bytes.length,
 				bytes,
 			})
 		}

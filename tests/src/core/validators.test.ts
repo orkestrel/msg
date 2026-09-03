@@ -11,7 +11,6 @@ import type { EmailAttachment, EmailMessage, EmailChain } from '@src/core'
 const validAttachment: EmailAttachment = {
 	name: 'file.txt',
 	mimeType: 'text/plain',
-	size: 4,
 	bytes: new Uint8Array([1, 2, 3, 4]),
 }
 

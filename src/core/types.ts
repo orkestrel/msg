@@ -89,7 +89,7 @@ export interface MSGMutableFieldData {
 	readonly dataId?: number
 	readonly contentLength?: number
 	readonly folderId?: number
-	[key: string]: unknown
+	readonly [key: string]: unknown
 }
 
 /**
@@ -273,12 +273,12 @@ export interface MSGFieldData {
  * Holds extracted attachment content from an MSG file.
  *
  * @remarks
- * - `fileName` — the attachment file name
- * - `content` — the raw binary content
+ * - `name` — the attachment file name
+ * - `bytes` — the raw binary content
  */
 export interface MSGAttachment {
-	readonly fileName: string
-	readonly content: Uint8Array
+	readonly name: string
+	readonly bytes: Uint8Array
 }
 
 /**
@@ -286,9 +286,10 @@ export interface MSGAttachment {
  * indexed attachment access.
  *
  * @remarks
- * `MSG` satisfies this contract through its own `#readFields` and
- * `attachment` members, and `extractMessageFromMSG` accepts anything else
- * that supplies the same two operations.
+ * `MSG`'s constructor builds a separate adapter object that satisfies this
+ * contract and hands it to `extractMessageFromMSG`, which accepts any other
+ * value supplying the same call signatures. The `MSG` class itself does not
+ * implement this interface.
  */
 export interface MSGSourceInterface {
 	/**
@@ -346,13 +347,11 @@ export interface MIMEPart {
  * @remarks
  * - `name` — attachment file name
  * - `mimeType` — MIME content type
- * - `size` — byte length
- * - `bytes` — raw binary content
+ * - `bytes` — raw binary content, whose `length` is the attachment's byte size
  */
 export interface EmailAttachment {
 	readonly name: string
 	readonly mimeType: string
-	readonly size: number
 	readonly bytes: Uint8Array
 }
 
@@ -418,7 +417,9 @@ export type MSGInput = Uint8Array | ArrayBuffer | EmailInput
  * Configures the creation of an {@link MSGInterface}.
  *
  * @remarks
- * - `encoding` — encoding for non-Unicode strings and MIME part bodies (default `'windows-1252'`)
+ * - `encoding` — decodes a non-Unicode MSG property string. Default:
+ *   `'windows-1252'`. A MIME part body is decoded with the charset its own
+ *   `content-type` header names, which this option does not reach.
  */
 export interface MSGOptions {
 	readonly encoding?: MSGEncoding
@@ -442,9 +443,14 @@ export interface MSGInterface {
 	/**
 	 * Reads attachment binary content by index.
 	 *
+	 * Requires `'msg'` input. For `'eml'` input the MAPI field tree this index
+	 * addresses is absent, so every index throws; read an `.eml` file's
+	 * attachments from `chain.messages[0].attachments` instead.
+	 *
 	 * @param index - Zero-based index into the parsed attachment list
 	 * @returns File name and raw binary content
-	 * @throws {@link MSGError} with code `RANGE` when the index is out of bounds
+	 * @throws {@link MSGError} with code `RANGE` when the index is out of bounds,
+	 * and for every index when the parsed format is `'eml'`
 	 */
 	attachment(index: number): MSGAttachment
 

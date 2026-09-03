@@ -69,12 +69,12 @@ import {
 	decodeUTF8,
 	detectFormat,
 	isMSGFile,
-	removeTrailingNull,
+	truncateAtNull,
 	readUTF16String,
-	readANSIString,
+	decodeText,
 	fileTimeToUTCString,
 	toHexLower,
-	msftUUIDStringify,
+	readMicrosoftUUID,
 } from './helpers.js'
 import { parseMIMEPart } from './parsers.js'
 import { burnCFB, extractMessage, extractMessageFromMSG } from './shapers.js'
@@ -209,7 +209,7 @@ export class MSG implements MSGInterface {
 	}
 
 	/**
-	 * Holds the parsed email chain. The detected format is available via
+	 * Holds the parsed email chain. The detected format is available through
 	 * `chain.format`.
 	 */
 	get chain(): EmailChain {
@@ -227,9 +227,14 @@ export class MSG implements MSGInterface {
 	/**
 	 * Reads attachment binary content by index.
 	 *
+	 * Requires `'msg'` input. For `'eml'` input the MAPI field tree this index
+	 * addresses is absent, so every index throws; read an `.eml` file's
+	 * attachments from `chain.messages[0].attachments` instead.
+	 *
 	 * @param index - Zero-based index into the parsed attachment list
 	 * @returns File name and raw binary content
-	 * @throws {@link MSGError} with code `RANGE` when the index is out of bounds
+	 * @throws {@link MSGError} with code `RANGE` when the index is out of bounds,
+	 * and for every index when the parsed format is `'eml'`
 	 */
 	attachment(index: number): MSGAttachment {
 		if (this.#fields === undefined) {
@@ -250,7 +255,7 @@ export class MSG implements MSGInterface {
 			const directory = this.#innerMSGDirectories[attach.folderId]
 			const content =
 				directory === undefined ? new Uint8Array(0) : this.#burnFolder(directory, true, true)
-			return { fileName: name + '.msg', content }
+			return { name: `${name}.msg`, bytes: content }
 		}
 
 		if (
@@ -266,7 +271,7 @@ export class MSG implements MSGInterface {
 			throw new MSGError('RANGE', 'Attachment has no valid data reference', { index })
 		}
 		const content = this.#readEntry(entry)
-		const fileName =
+		const name =
 			typeof attach.fileName === 'string'
 				? attach.fileName
 				: typeof attach.fileNameShort === 'string'
@@ -275,7 +280,7 @@ export class MSG implements MSGInterface {
 						? attach.name
 						: 'unknown'
 
-		return { fileName, content }
+		return { name, bytes: content }
 	}
 
 	/**
@@ -494,7 +499,7 @@ export class MSG implements MSGInterface {
 		// including the NUL terminator, so a hostile name-size field is
 		// clamped to that field's own capacity before it is ever read.
 		const charCount = Math.min(nameBytes / 2 - 1, MSG_BURNER_NAME_MAX)
-		return removeTrailingNull(readUTF16String(this.#view, offset, charCount))
+		return truncateAtNull(readUTF16String(this.#view, offset, charCount))
 	}
 
 	#readDirectoryEntry(offset: number): MSGDirectoryEntry {
@@ -587,21 +592,21 @@ export class MSG implements MSGInterface {
 		const children: number[] = []
 
 		const siblingVisited = new Set<number>([node.childProperty])
-		const stack: Array<{ mode: string; index: number }> = [
-			{ mode: 'walk', index: node.childProperty },
+		const stack: Array<{ readonly emit: boolean; readonly index: number }> = [
+			{ emit: false, index: node.childProperty },
 		]
 
 		while (stack.length > 0) {
-			const item = stack.pop()
-			if (item === undefined) break
-			const current = props[item.index]
+			const step = stack.pop()
+			if (step === undefined) break
+			const current = props[step.index]
 			if (current === undefined) continue
 
-			if (item.mode === 'push') {
-				children.push(item.index)
+			if (step.emit) {
+				children.push(step.index)
 			} else {
 				if (current.category === MSG_CATEGORY_DIRECTORY) {
-					this.#buildHierarchy(props, item.index, visited, depth + 1)
+					this.#buildHierarchy(props, step.index, visited, depth + 1)
 				}
 				if (current.nextProperty !== MSG_PROP_NO_INDEX) {
 					if (siblingVisited.has(current.nextProperty)) {
@@ -614,9 +619,9 @@ export class MSG implements MSGInterface {
 						)
 					}
 					siblingVisited.add(current.nextProperty)
-					stack.push({ mode: 'walk', index: current.nextProperty })
+					stack.push({ emit: false, index: current.nextProperty })
 				}
-				stack.push({ mode: 'push', index: item.index })
+				stack.push({ emit: true, index: step.index })
 				if (current.previousProperty !== MSG_PROP_NO_INDEX) {
 					if (siblingVisited.has(current.previousProperty)) {
 						throw new MSGError(
@@ -626,7 +631,7 @@ export class MSG implements MSGInterface {
 						)
 					}
 					siblingVisited.add(current.previousProperty)
-					stack.push({ mode: 'walk', index: current.previousProperty })
+					stack.push({ emit: false, index: current.previousProperty })
 				}
 			}
 		}
@@ -758,7 +763,7 @@ export class MSG implements MSGInterface {
 			attachments: [],
 			recipients: [],
 		}
-		this.#processDirectory(root, fields, 'root')
+		this.#processDirectory(root, fields, 32)
 		return this.#toFieldData(fields)
 	}
 
@@ -929,7 +934,11 @@ export class MSG implements MSGInterface {
 		return fields
 	}
 
-	#processDirectory(entry: MSGDirectoryEntry, fields: MSGMutableFieldData, subClass: string): void {
+	#processDirectory(
+		entry: MSGDirectoryEntry,
+		fields: MSGMutableFieldData,
+		headerSize: number,
+	): void {
 		const children = entry.children
 		if (children === undefined) return
 
@@ -956,11 +965,7 @@ export class MSG implements MSGInterface {
 				if (child.name.indexOf(MSG_PREFIX_DOCUMENT) === 0) {
 					this.#processDocument(child, childIndex, fields)
 				} else if (child.name === '__properties_version1.0') {
-					if (subClass === 'recip' || subClass === 'attachment' || subClass === 'sub') {
-						this.#processPropertyStream(child, 8, fields)
-					} else if (subClass === 'root') {
-						this.#processPropertyStream(child, 32, fields)
-					}
+					this.#processPropertyStream(child, headerSize, fields)
 				}
 			}
 		}
@@ -976,13 +981,13 @@ export class MSG implements MSGInterface {
 			Object.assign(fields, {
 				attachments: [...(fields.attachments ?? []), attachmentField],
 			})
-			this.#processDirectory(child, attachmentField, 'attachment')
+			this.#processDirectory(child, attachmentField, 8)
 		} else if (child.name.indexOf(MSG_PREFIX_RECIPIENT) === 0) {
 			const recipientField: MSGMutableFieldData = { category: 'recipient' }
 			Object.assign(fields, {
 				recipients: [...(fields.recipients ?? []), recipientField],
 			})
-			this.#processDirectory(child, recipientField, 'recip')
+			this.#processDirectory(child, recipientField, 8)
 		} else if (child.name.indexOf(MSG_PREFIX_NAMEID) === 0) {
 			this.#processNameIdDirectory(child)
 		} else {
@@ -993,7 +998,7 @@ export class MSG implements MSGInterface {
 					attachments: [],
 					recipients: [],
 				}
-				this.#processDirectory(child, innerFields, 'sub')
+				this.#processDirectory(child, innerFields, 8)
 				Object.assign(fields, {
 					innerMSGContentFields: innerFields,
 					innerMSGContent: true,
@@ -1026,8 +1031,8 @@ export class MSG implements MSGInterface {
 			return
 		}
 
-		const data = this.#readEntry(entry)
-		this.#decodeAndAssign(fieldClass, fieldType, data, fields, false)
+		const bytes = this.#readEntry(entry)
+		this.#decodeAndAssign(fieldClass, fieldType, bytes, fields, false)
 	}
 
 	#processPropertyStream(
@@ -1035,13 +1040,13 @@ export class MSG implements MSGInterface {
 		headerSize: number,
 		fields: MSGMutableFieldData,
 	): void {
-		const data = this.#readEntry(entry)
-		if (data.length <= headerSize) return
+		const bytes = this.#readEntry(entry)
+		if (bytes.length <= headerSize) return
 
 		const propView = new DataView(
-			data.buffer,
-			data.byteOffset + headerSize,
-			data.length - headerSize,
+			bytes.buffer,
+			bytes.byteOffset + headerSize,
+			bytes.length - headerSize,
 		)
 		let offset = 0
 
@@ -1051,7 +1056,7 @@ export class MSG implements MSGInterface {
 			// skip flags (4 bytes)
 			offset += 8
 
-			const valueBytes = new Uint8Array(data.buffer, data.byteOffset + headerSize + offset, 8)
+			const valueBytes = new Uint8Array(bytes.buffer, bytes.byteOffset + headerSize + offset, 8)
 			offset += 8
 
 			const fieldClass = toHexLower((propertyTag >>> 16) & 0xffff, 4)
@@ -1064,7 +1069,7 @@ export class MSG implements MSGInterface {
 	#decodeAndAssign(
 		fieldClass: string,
 		fieldType: string,
-		data: Uint8Array,
+		bytes: Uint8Array,
 		fields: MSGMutableFieldData,
 		insideProps: boolean,
 	): void {
@@ -1088,30 +1093,30 @@ export class MSG implements MSGInterface {
 		}
 
 		const decodeAs = MSG_FIELD_TYPE_MAPPING[fieldType]
-		let value: unknown = data
+		let value: unknown = bytes
 
 		if (decodeAs === 'string') {
-			value = removeTrailingNull(readANSIString(data, this.#options.encoding))
+			value = truncateAtNull(decodeText(bytes, this.#options.encoding))
 			if (insideProps) key = undefined
 		} else if (decodeAs === 'unicode') {
-			const view = new DataView(data.buffer, data.byteOffset, data.length)
-			value = removeTrailingNull(readUTF16String(view, 0, Math.floor(data.length / 2)))
+			const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
+			value = truncateAtNull(readUTF16String(view, 0, Math.floor(bytes.length / 2)))
 			if (insideProps) key = undefined
 		} else if (decodeAs === 'binary') {
 			if (insideProps) key = undefined
 		} else if (decodeAs === 'integer') {
-			if (data.length >= 4) {
-				const dv = new DataView(data.buffer, data.byteOffset, data.length)
+			if (bytes.length >= 4) {
+				const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
 				value = dv.getUint32(0, true)
 			}
 		} else if (decodeAs === 'boolean') {
-			if (data.length >= 2) {
-				const dv = new DataView(data.buffer, data.byteOffset, data.length)
+			if (bytes.length >= 2) {
+				const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
 				value = dv.getUint16(0, true) !== 0
 			}
 		} else if (decodeAs === 'time') {
-			if (data.length >= 8) {
-				const dv = new DataView(data.buffer, data.byteOffset, data.length)
+			if (bytes.length >= 8) {
+				const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
 				const lo = dv.getUint32(0, true)
 				const hi = dv.getUint32(4, true)
 				value = fileTimeToUTCString(lo, hi)
@@ -1125,9 +1130,7 @@ export class MSG implements MSGInterface {
 			else if (value === MSG_MAPI_RECIPIENT_BCC) value = 'bcc' satisfies MSGRecipientRole
 		}
 
-		if (key !== undefined) {
-			fields[key] = value
-		}
+		if (key !== undefined) Object.assign(fields, { [key]: value })
 	}
 
 	#resolvePidLid(propertySet: string, propertyLid: number): string | undefined {
@@ -1207,7 +1210,7 @@ export class MSG implements MSGInterface {
 				} else {
 					const guidOffset = 16 * (guidIndex - 3)
 					if (guidOffset >= 0 && guidOffset + 16 <= guidTable.length) {
-						propertySet = msftUUIDStringify(guidTable, guidOffset)
+						propertySet = readMicrosoftUUID(guidTable, guidOffset)
 					}
 				}
 

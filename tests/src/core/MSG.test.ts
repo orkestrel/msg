@@ -236,9 +236,9 @@ describe('MSG — attachmentFiles.msg exposes attachments', () => {
 
 		for (let index = 0; index < attachments.length; index++) {
 			const result = msg.attachment(index)
-			expect(typeof result.fileName).toBe('string')
-			expect(result.fileName.length).toBeGreaterThan(0)
-			expect(result.content).toBeInstanceOf(Uint8Array)
+			expect(typeof result.name).toBe('string')
+			expect(result.name.length).toBeGreaterThan(0)
+			expect(result.bytes).toBeInstanceOf(Uint8Array)
 		}
 	})
 })
@@ -264,13 +264,13 @@ describe('MSG — msgInMsg.msg exercises an embedded .msg attachment', () => {
 
 		const result = msg.attachment(innerIndex)
 		const view = new DataView(
-			result.content.buffer,
-			result.content.byteOffset,
-			result.content.byteLength,
+			result.bytes.buffer,
+			result.bytes.byteOffset,
+			result.bytes.byteLength,
 		)
 		expect(isMSGFile(view)).toBe(true)
 
-		const innerMsg = new MSG(toArrayBuffer(result.content))
+		const innerMsg = new MSG(toArrayBuffer(result.bytes))
 		expect(innerMsg.fields?.category).toBe('msg')
 		const innerAttachment = requireValue(attachments[innerIndex])
 		expect(innerMsg.fields?.subject).toBe(innerAttachment.innerMSGContentFields?.subject)
@@ -342,10 +342,10 @@ describe('MSG — burn() round-trip', () => {
 		for (let i = 0; i < originalCount; i++) {
 			const originalAttachment = original.attachment(i)
 			const reparsedAttachment = reparsed.attachment(i)
-			expect(reparsedAttachment.fileName).toBe(originalAttachment.fileName)
-			expect(reparsedAttachment.content.length).toBe(originalAttachment.content.length)
-			expect(Array.from(reparsedAttachment.content)).toStrictEqual(
-				Array.from(originalAttachment.content),
+			expect(reparsedAttachment.name).toBe(originalAttachment.name)
+			expect(reparsedAttachment.bytes.length).toBe(originalAttachment.bytes.length)
+			expect(Array.from(reparsedAttachment.bytes)).toStrictEqual(
+				Array.from(originalAttachment.bytes),
 			)
 		}
 	})

@@ -67,8 +67,8 @@ describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 		const parsed = new MSG(binary)
 		const attachment = parsed.attachment(0)
 
-		expect(attachment.content.length).toBe(payload.length)
-		expect(Array.from(attachment.content)).toEqual(Array.from(payload))
+		expect(attachment.bytes.length).toBe(payload.length)
+		expect(Array.from(attachment.bytes)).toEqual(Array.from(payload))
 	})
 
 	it('burns and round-trips a stream one byte OVER the cutoff (standard sectors)', () => {
@@ -95,8 +95,8 @@ describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 		const parsed = new MSG(binary)
 		const attachment = parsed.attachment(0)
 
-		expect(attachment.content.length).toBe(payload.length)
-		expect(Array.from(attachment.content)).toEqual(Array.from(payload))
+		expect(attachment.bytes.length).toBe(payload.length)
+		expect(Array.from(attachment.bytes)).toEqual(Array.from(payload))
 	})
 })
 
@@ -147,8 +147,8 @@ describe('burnCFB — multiple children and directory ordering', () => {
 		const expectedFirstBytes = new Set(payloads.map((payload) => payload[0]))
 		const actualFirstBytes = new Set(
 			(fields?.attachments ?? []).map((_, index) => {
-				const content = parsed.attachment(index).content
-				return requireValue(content[0])
+				const bytes = parsed.attachment(index).bytes
+				return requireValue(bytes[0])
 			}),
 		)
 		expect(actualFirstBytes).toEqual(expectedFirstBytes)

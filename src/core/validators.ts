@@ -31,7 +31,6 @@ export function isEmailAttachment(value: unknown): value is EmailAttachment {
 	return (
 		typeof value.name === 'string' &&
 		typeof value.mimeType === 'string' &&
-		typeof value.size === 'number' &&
 		value.bytes instanceof Uint8Array
 	)
 }
@@ -45,15 +44,15 @@ export function isEmailAttachment(value: unknown): value is EmailAttachment {
 export function isEmailMessage(value: unknown): value is EmailMessage {
 	if (!isRecord(value)) return false
 	if (typeof value.from !== 'string') return false
-	if (!Array.isArray(value.to) || !value.to.every((item) => typeof item === 'string')) return false
-	if (!Array.isArray(value.cc) || !value.cc.every((item) => typeof item === 'string')) return false
+	if (!Array.isArray(value.to) || !value.to.every((address) => typeof address === 'string')) return false
+	if (!Array.isArray(value.cc) || !value.cc.every((address) => typeof address === 'string')) return false
 	if (typeof value.subject !== 'string') return false
 	if (value.date !== undefined && !(value.date instanceof Date)) return false
 	if (typeof value.text !== 'string') return false
 	if (typeof value.html !== 'string') return false
 	if (
 		!Array.isArray(value.attachments) ||
-		!value.attachments.every((item) => isEmailAttachment(item))
+		!value.attachments.every((attachment) => isEmailAttachment(attachment))
 	) {
 		return false
 	}
@@ -69,7 +68,7 @@ export function isEmailMessage(value: unknown): value is EmailMessage {
 export function isEmailChain(value: unknown): value is EmailChain {
 	if (!isRecord(value)) return false
 	if (value.format !== 'eml' && value.format !== 'msg') return false
-	if (!Array.isArray(value.messages) || !value.messages.every((item) => isEmailMessage(item)))
+	if (!Array.isArray(value.messages) || !value.messages.every((message) => isEmailMessage(message)))
 		return false
 	return true
 }

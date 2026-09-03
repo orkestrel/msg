@@ -8,14 +8,14 @@ import {
 	isSuccess,
 	isFailure,
 	isMSGFile,
-	removeTrailingNull,
+	truncateAtNull,
 	readUTF16String,
-	readANSIString,
+	decodeText,
 	fileTimeToUTCString,
 	toHexLower,
-	msftUUIDStringify,
+	readMicrosoftUUID,
 	roundUpToMultiple,
-	sectorsNeeded,
+	computeSectors,
 	compareCFBName,
 	decodeBase64,
 	encodeUTF8,
@@ -224,37 +224,37 @@ describe('readUTF16String', () => {
 	})
 })
 
-describe('readANSIString', () => {
+describe('decodeText', () => {
 	it('decodes utf-16le', () => {
 		const bytes = new Uint8Array([0x48, 0x00, 0x69, 0x00]) // 'Hi'
-		expect(readANSIString(bytes, 'utf-16le')).toBe('Hi')
+		expect(decodeText(bytes, 'utf-16le')).toBe('Hi')
 	})
 
 	it('decodes utf-8', () => {
-		expect(readANSIString(encodeUTF8('café'), 'utf-8')).toBe('café')
+		expect(decodeText(encodeUTF8('café'), 'utf-8')).toBe('café')
 	})
 
 	it('decodes latin1', () => {
-		expect(readANSIString(new Uint8Array([0x41, 0xe9]), 'latin1')).toBe('Aé')
+		expect(decodeText(new Uint8Array([0x41, 0xe9]), 'latin1')).toBe('Aé')
 	})
 
 	it('decodes windows-1252 (default when encoding is omitted)', () => {
-		expect(readANSIString(new Uint8Array([0x80]))).toBe('€')
-		expect(readANSIString(new Uint8Array([0x80]), 'windows-1252')).toBe('€')
+		expect(decodeText(new Uint8Array([0x80]))).toBe('€')
+		expect(decodeText(new Uint8Array([0x80]), 'windows-1252')).toBe('€')
 	})
 })
 
-describe('removeTrailingNull', () => {
-	it('removes a trailing null and everything after it', () => {
-		expect(removeTrailingNull('hello\0world')).toBe('hello')
+describe('truncateAtNull', () => {
+	it('truncates at the first NUL, dropping everything after it', () => {
+		expect(truncateAtNull('hello\0world')).toBe('hello')
 	})
 
-	it('returns the string unchanged when there is no null', () => {
-		expect(removeTrailingNull('hello')).toBe('hello')
+	it('returns the whole text when it carries no NUL', () => {
+		expect(truncateAtNull('hello')).toBe('hello')
 	})
 
-	it('returns an empty string when the first character is null', () => {
-		expect(removeTrailingNull('\0hello')).toBe('')
+	it('returns an empty string when the first character is a NUL', () => {
+		expect(truncateAtNull('\0hello')).toBe('')
 	})
 })
 
@@ -269,13 +269,13 @@ describe('toHexLower', () => {
 	})
 })
 
-describe('msftUUIDStringify', () => {
+describe('readMicrosoftUUID', () => {
 	it('stringifies a mixed-endian UUID from a known byte vector', () => {
 		const data = new Uint8Array([
 			0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
 			0x10,
 		])
-		expect(msftUUIDStringify(data, 0)).toBe('04030201-0605-0807-090a-0b0c0d0e0f10')
+		expect(readMicrosoftUUID(data, 0)).toBe('04030201-0605-0807-090a-0b0c0d0e0f10')
 	})
 
 	it('reads starting at a non-zero offset', () => {
@@ -283,7 +283,7 @@ describe('msftUUIDStringify', () => {
 			0xff, 0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
 			0x0e, 0x0f, 0x10,
 		])
-		expect(msftUUIDStringify(data, 2)).toBe('04030201-0605-0807-090a-0b0c0d0e0f10')
+		expect(readMicrosoftUUID(data, 2)).toBe('04030201-0605-0807-090a-0b0c0d0e0f10')
 	})
 })
 
@@ -319,17 +319,17 @@ describe('roundUpToMultiple', () => {
 	})
 })
 
-describe('sectorsNeeded', () => {
+describe('computeSectors', () => {
 	it('returns 0 for 0 bytes', () => {
-		expect(sectorsNeeded(0, 512)).toBe(0)
+		expect(computeSectors(0, 512)).toBe(0)
 	})
 
 	it('returns exactly 1 for exactly one sector', () => {
-		expect(sectorsNeeded(512, 512)).toBe(1)
+		expect(computeSectors(512, 512)).toBe(1)
 	})
 
 	it('returns 2 for one sector + 1 byte', () => {
-		expect(sectorsNeeded(513, 512)).toBe(2)
+		expect(computeSectors(513, 512)).toBe(2)
 	})
 })
 

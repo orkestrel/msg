@@ -67,12 +67,12 @@ export function isFailure<T, E>(result: Result<T, E>): result is Failure<E> {
 // === MSG Helpers
 
 /**
- * Removes trailing null characters from a string.
+ * Truncates a string at its first NUL character.
  *
  * @param text - Input string
- * @returns String with trailing nulls removed
+ * @returns The text before the first NUL, or the whole text when it carries none
  */
-export function removeTrailingNull(text: string): string {
+export function truncateAtNull(text: string): string {
 	const index = text.indexOf('\0')
 	if (index !== -1) {
 		return text.substring(0, index)
@@ -108,28 +108,28 @@ export function readUTF16String(view: DataView, offset: number, charCount: numbe
 }
 
 /**
- * Reads a non-Unicode (PT_STRING8) string from a byte array using a
- * pure-ES decoder — no `TextDecoder` dependency, so this stays usable
- * in the core's DOM/Node-free environment.
+ * Decodes bytes into a string using the named encoding. Default:
+ * `windows-1252`. Every branch runs a pure-ES decoder — no `TextDecoder`
+ * dependency, so this stays usable in the core's DOM/Node-free environment.
  *
- * @param data - Binary data
- * @param encoding - Encoding to decode with (default `'windows-1252'`)
+ * @param bytes - Binary data
+ * @param encoding - Encoding to decode with. Default: `'windows-1252'`
  * @returns Decoded string
  *
  * @example
  * ```ts
- * readANSIString(new Uint8Array([0x93, 0x41, 0x94])) // '“A”'
+ * decodeText(new Uint8Array([0x93, 0x41, 0x94])) // '“A”'
  * ```
  */
-export function readANSIString(data: Uint8Array, encoding?: MSGEncoding): string {
+export function decodeText(bytes: Uint8Array, encoding?: MSGEncoding): string {
 	const resolved = encoding ?? 'windows-1252'
 	if (resolved === 'utf-16le') {
-		const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-		return readUTF16String(view, 0, Math.floor(data.length / 2))
+		const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+		return readUTF16String(view, 0, Math.floor(bytes.length / 2))
 	}
-	if (resolved === 'utf-8') return decodeUTF8(data)
-	if (resolved === 'latin1') return decodeLatin1(data)
-	return decodeWindows1252(data)
+	if (resolved === 'utf-8') return decodeUTF8(bytes)
+	if (resolved === 'latin1') return decodeLatin1(bytes)
+	return decodeWindows1252(bytes)
 }
 
 /**
@@ -166,18 +166,20 @@ export function toHexLower(value: number, length: number): string {
 }
 
 /**
- * Stringifies a mixed-endian Microsoft UUID from a byte array.
+ * Reads a mixed-endian Microsoft UUID from a byte array.
  *
- * @param data - Byte array containing the UUID
+ * @param bytes - Byte array containing the UUID
  * @param offset - Byte offset to start reading
  * @returns UUID string in lowercase
+ * @throws {@link MSGError} with code `RANGE` when the UUID range exceeds the
+ * array's bounds
  */
-export function msftUUIDStringify(data: Uint8Array, offset: number): string {
+export function readMicrosoftUUID(bytes: Uint8Array, offset: number): string {
 	const order = [3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15]
 	let result = ''
 	for (const [index, relative] of order.entries()) {
 		if (index === 4 || index === 6 || index === 8 || index === 10) result += '-'
-		const byte = data[offset + relative]
+		const byte = bytes[offset + relative]
 		if (byte === undefined) {
 			throw new MSGError('RANGE', 'UUID byte offset is out of range', {
 				offset: offset + relative,
@@ -222,7 +224,7 @@ export function roundUpToMultiple(value: number, boundary: number): number {
  * @param sectorSize - Sector size in bytes
  * @returns Number of sectors (0 when bytes ≤ 0)
  */
-export function sectorsNeeded(bytes: number, sectorSize: number): number {
+export function computeSectors(bytes: number, sectorSize: number): number {
 	if (bytes <= 0) return 0
 	return roundUpToMultiple(bytes, sectorSize) / sectorSize
 }
@@ -553,7 +555,7 @@ export function detectFormat(
 export function parseMIMEHeaders(text: string): ReadonlyMap<string, MIMEHeader> {
 	const raw: Array<{ name: string; value: string }> = []
 
-	for (const line of text.split('\n')) {
+	for (const line of text.split(/\r\n|\n/)) {
 		if (line === '') continue
 		if ((line.startsWith(' ') || line.startsWith('\t')) && raw.length > 0) {
 			const last = raw[raw.length - 1]
@@ -597,7 +599,7 @@ export function parseMIMEHeaders(text: string): ReadonlyMap<string, MIMEHeader> 
  * Decodes a MIME-encoded body string into a raw byte array.
  *
  * @param body - Raw encoded string
- * @param encoding - Encoding type (e.g., 'base64', 'quoted-printable')
+ * @param encoding - Encoding type, for example 'base64' or 'quoted-printable'
  * @returns Decoded byte array
  * @throws {@link MSGError} with code `MALFORMED` when `encoding` is `'base64'`
  * and `body` contains an invalid Base64 character
@@ -635,11 +637,11 @@ export function decodeMIMEEncoding(body: string, encoding: string): Uint8Array {
 
 /**
  * Decodes a MIME-encoded body into a text string based on an arbitrary
- * charset label, resolved via {@link resolveEncoding}.
+ * charset label, resolved through {@link resolveEncoding}.
  *
  * @param body - Raw encoded string
  * @param encoding - Transfer encoding type
- * @param charset - Character set label (e.g., 'utf-8')
+ * @param charset - Character set label, for example 'utf-8'
  * @returns Decoded string
  */
 export function decodeMIMEText(body: string, encoding: string, charset: string): string {
@@ -648,7 +650,7 @@ export function decodeMIMEText(body: string, encoding: string, charset: string):
 		return body // Return directly for 7bit/8bit text
 	}
 	const bytes = decodeMIMEEncoding(body, encoding)
-	return readANSIString(bytes, resolveEncoding(charset))
+	return decodeText(bytes, resolveEncoding(charset))
 }
 
 /**
@@ -679,7 +681,7 @@ export function decodeMIMEWords(text: string): string {
 					upper === 'B'
 						? decodeMIMEEncoding(encoded, 'base64')
 						: decodeMIMEEncoding(encoded.replace(/_/g, ' '), 'quoted-printable')
-				return readANSIString(bytes, resolveEncoding(charset))
+				return decodeText(bytes, resolveEncoding(charset))
 			} catch {
 				return encoded
 			}
@@ -706,7 +708,7 @@ export function formatEmailAddress(name: string | undefined, email: string | und
 
 /**
  * Infers the file extension for an attachment based on its filename or MIME type.
- * Returns the extension including the dot (e.g., '.jpg').
+ * Returns the extension including the dot, for example '.jpg'.
  *
  * @param mimeType - MIME type to infer from
  * @param fileName - File name to infer from
@@ -717,7 +719,6 @@ export function inferExtension(mimeType?: string, fileName?: string): string {
 		const lastDotIndex = fileName.lastIndexOf('.')
 		if (lastDotIndex !== -1 && lastDotIndex < fileName.length - 1) {
 			const ext = fileName.slice(lastDotIndex).toLowerCase()
-			// Basic validation: extension should be alphanumeric and reasonably short
 			if (/^\.[a-z0-9]{1,10}$/.test(ext)) {
 				return ext
 			}
