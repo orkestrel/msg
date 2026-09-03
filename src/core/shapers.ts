@@ -10,27 +10,27 @@ import {
 	FALLBACK_ATTACHMENT_NAME,
 	MSG_BURNER_DIFAT_HEADER_SLOTS,
 	MSG_BURNER_DIFAT_SECTOR_MARKER,
-	MSG_BURNER_DIR_ENTRY_SIZE,
 	MSG_BURNER_FAT_SECTOR_MARKER,
 	MSG_BURNER_INTS_PER_SECTOR,
-	MSG_BURNER_MINI_SECTOR_SIZE,
-	MSG_BURNER_MINI_STREAM_CUTOFF,
 	MSG_BURNER_NAME_MAX,
 	MSG_BURNER_ROOT_CLSID,
-	MSG_BURNER_SECTOR_SIZE,
 	MSG_CATEGORY_DIRECTORY,
 	MSG_CATEGORY_DOCUMENT,
+	MSG_DIRECTORY_ENTRY_SIZE,
 	MSG_END_OF_CHAIN,
 	MSG_FILE_HEADER,
+	MSG_MINI_SECTOR_SIZE,
+	MSG_MINI_STREAM_CUTOFF,
+	MSG_SECTOR_SIZE,
 	MSG_UNUSED_BLOCK,
 } from './constants.js'
 import { MSGError } from './errors.js'
 import {
 	compareCFBName,
+	computeSectors,
 	decodeMIMEEncoding,
 	decodeMIMEText,
 	decodeMIMEWords,
-	computeSectors,
 	formatEmailAddress,
 } from './helpers.js'
 
@@ -57,7 +57,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		right: -1,
 		child: -1,
 		firstSector: 0,
-		mini: entry.category === MSG_CATEGORY_DOCUMENT && entry.length < MSG_BURNER_MINI_STREAM_CUTOFF,
+		mini: entry.category === MSG_CATEGORY_DOCUMENT && entry.length < MSG_MINI_STREAM_CUTOFF,
 		red: false,
 	}))
 	if (liteEntries[0] === undefined) {
@@ -190,8 +190,8 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	const miniFat: number[] = []
 
 	const directoryCount = computeSectors(
-		MSG_BURNER_DIR_ENTRY_SIZE * liteEntries.length,
-		MSG_BURNER_SECTOR_SIZE,
+		MSG_DIRECTORY_ENTRY_SIZE * liteEntries.length,
+		MSG_SECTOR_SIZE,
 	)
 	const entriesFirstSector = fat.length
 	for (let index = 0; index < directoryCount; index++) {
@@ -203,7 +203,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		if (liteEntry.entry.category !== MSG_CATEGORY_DOCUMENT || liteEntry.mini) continue
 		let firstSector = MSG_END_OF_CHAIN
 		if (liteEntry.entry.length !== 0) {
-			const count = computeSectors(liteEntry.entry.length, MSG_BURNER_SECTOR_SIZE)
+			const count = computeSectors(liteEntry.entry.length, MSG_SECTOR_SIZE)
 			firstSector = fat.length
 			for (let offset = 0; offset < count; offset++) {
 				const next = offset + 1 === count ? MSG_END_OF_CHAIN : firstSector + offset + 1
@@ -217,7 +217,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		if (liteEntry.entry.category !== MSG_CATEGORY_DOCUMENT || !liteEntry.mini) continue
 		let firstSector = MSG_END_OF_CHAIN
 		if (liteEntry.entry.length !== 0) {
-			const count = computeSectors(liteEntry.entry.length, MSG_BURNER_MINI_SECTOR_SIZE)
+			const count = computeSectors(liteEntry.entry.length, MSG_MINI_SECTOR_SIZE)
 			firstSector = miniFat.length
 			for (let offset = 0; offset < count; offset++) {
 				const next = offset + 1 === count ? MSG_END_OF_CHAIN : firstSector + offset + 1
@@ -227,15 +227,15 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		liteEntries[index] = { ...liteEntry, firstSector }
 	}
 
-	const numMiniFatSectors = computeSectors(4 * miniFat.length, MSG_BURNER_SECTOR_SIZE)
+	const numMiniFatSectors = computeSectors(4 * miniFat.length, MSG_SECTOR_SIZE)
 	const firstMiniFatSector = numMiniFatSectors === 0 ? MSG_END_OF_CHAIN : fat.length
 	for (let index = 0; index < numMiniFatSectors; index++) {
 		const next = index + 1 === numMiniFatSectors ? MSG_END_OF_CHAIN : firstMiniFatSector + index + 1
 		fat.push(next)
 	}
 
-	const bytesMiniFat = MSG_BURNER_MINI_SECTOR_SIZE * miniFat.length
-	const miniDataCount = bytesMiniFat === 0 ? 0 : computeSectors(bytesMiniFat, MSG_BURNER_SECTOR_SIZE)
+	const bytesMiniFat = MSG_MINI_SECTOR_SIZE * miniFat.length
+	const miniDataCount = bytesMiniFat === 0 ? 0 : computeSectors(bytesMiniFat, MSG_SECTOR_SIZE)
 	const firstMiniDataSector = miniDataCount === 0 ? MSG_END_OF_CHAIN : fat.length
 	for (let index = 0; index < miniDataCount; index++) {
 		const next = index + 1 === miniDataCount ? MSG_END_OF_CHAIN : firstMiniDataSector + index + 1
@@ -256,7 +256,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	for (;;) {
 		const nextFatSectors = computeSectors(
 			4 * (fat.length + numFatSectors + numDifatSectors),
-			MSG_BURNER_SECTOR_SIZE,
+			MSG_SECTOR_SIZE,
 		)
 		const nextDifatSectors =
 			nextFatSectors > MSG_BURNER_DIFAT_HEADER_SLOTS
@@ -275,7 +275,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		fat.push(MSG_BURNER_DIFAT_SECTOR_MARKER)
 	}
 
-	const totalSize = MSG_BURNER_SECTOR_SIZE * (1 + fat.length)
+	const totalSize = MSG_SECTOR_SIZE * (1 + fat.length)
 	const buffer = new ArrayBuffer(totalSize)
 	const view = new DataView(buffer)
 	const bytes = new Uint8Array(buffer)
@@ -312,7 +312,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	view.setUint16(0x20, 6, true)
 	view.setInt32(0x2c, numFatSectors, true)
 	view.setInt32(0x30, entriesFirstSector, true)
-	view.setInt32(0x38, MSG_BURNER_MINI_STREAM_CUTOFF, true)
+	view.setInt32(0x38, MSG_MINI_STREAM_CUTOFF, true)
 	view.setInt32(0x3c, firstMiniFatSector, true)
 	view.setInt32(0x40, numMiniFatSectors, true)
 	view.setInt32(0x44, firstDifatSector, true)
@@ -329,8 +329,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	}
 
 	for (const [index, liteEntry] of liteEntries.entries()) {
-		const position =
-			MSG_BURNER_SECTOR_SIZE * (1 + entriesFirstSector) + MSG_BURNER_DIR_ENTRY_SIZE * index
+		const position = MSG_SECTOR_SIZE * (1 + entriesFirstSector) + MSG_DIRECTORY_ENTRY_SIZE * index
 		const name = liteEntry.entry.name
 		if (name.length > MSG_BURNER_NAME_MAX) {
 			throw new MSGError('BURN', `directory entry name exceeds ${MSG_BURNER_NAME_MAX} characters`, {
@@ -367,7 +366,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 			liteEntry.entry.binaryProvider !== undefined
 		) {
 			const stream = liteEntry.entry.binaryProvider()
-			bytes.set(stream, MSG_BURNER_SECTOR_SIZE * (1 + liteEntry.firstSector))
+			bytes.set(stream, MSG_SECTOR_SIZE * (1 + liteEntry.firstSector))
 		}
 	}
 
@@ -381,15 +380,15 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 				const stream = liteEntry.entry.binaryProvider()
 				bytes.set(
 					stream,
-					MSG_BURNER_SECTOR_SIZE * (1 + firstMiniDataSector) +
-						MSG_BURNER_MINI_SECTOR_SIZE * liteEntry.firstSector,
+					MSG_SECTOR_SIZE * (1 + firstMiniDataSector) +
+						MSG_MINI_SECTOR_SIZE * liteEntry.firstSector,
 				)
 			}
 		}
 	}
 
 	if (firstMiniFatSector !== MSG_END_OF_CHAIN) {
-		let miniFatOffset = MSG_BURNER_SECTOR_SIZE * (1 + firstMiniFatSector)
+		let miniFatOffset = MSG_SECTOR_SIZE * (1 + firstMiniFatSector)
 		for (const sector of miniFat) {
 			view.setInt32(miniFatOffset, sector, true)
 			miniFatOffset += 4
@@ -399,14 +398,14 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 	while (fat.length % MSG_BURNER_INTS_PER_SECTOR !== 0) {
 		fat.push(MSG_UNUSED_BLOCK)
 	}
-	let fatOffset = MSG_BURNER_SECTOR_SIZE * (1 + firstFatSector)
+	let fatOffset = MSG_SECTOR_SIZE * (1 + firstFatSector)
 	for (const sector of fat) {
 		view.setInt32(fatOffset, sector, true)
 		fatOffset += 4
 	}
 
 	if (numDifatSectors > 0) {
-		let difatOffset = MSG_BURNER_SECTOR_SIZE * (1 + firstDifatSector)
+		let difatOffset = MSG_SECTOR_SIZE * (1 + firstDifatSector)
 		for (const sector of sectorDifat) {
 			view.setInt32(difatOffset, sector, true)
 			difatOffset += 4

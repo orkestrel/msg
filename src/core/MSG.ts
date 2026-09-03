@@ -25,11 +25,11 @@ import { MSGError } from './errors.js'
 import {
 	MSG_END_OF_CHAIN,
 	MSG_UNUSED_BLOCK,
-	MSG_S_BIG_BLOCK_SIZE,
+	MSG_SECTOR_SIZE,
 	MSG_L_BIG_BLOCK_SIZE,
 	MSG_L_BIG_BLOCK_MARK,
-	MSG_SMALL_BLOCK_SIZE,
-	MSG_BIG_BLOCK_MIN_DOC_SIZE,
+	MSG_MINI_SECTOR_SIZE,
+	MSG_MINI_STREAM_CUTOFF,
 	MSG_HEADER_PROPERTY_START_OFFSET,
 	MSG_HEADER_BAT_START_OFFSET,
 	MSG_HEADER_BAT_COUNT_OFFSET,
@@ -38,7 +38,7 @@ import {
 	MSG_HEADER_XBAT_START_OFFSET,
 	MSG_HEADER_XBAT_COUNT_OFFSET,
 	MSG_PROP_NO_INDEX,
-	MSG_PROPERTY_SIZE,
+	MSG_DIRECTORY_ENTRY_SIZE,
 	MSG_PROP_NAME_SIZE_OFFSET,
 	MSG_PROP_CATEGORY_OFFSET,
 	MSG_PROP_PREVIOUS_PROPERTY_OFFSET,
@@ -152,7 +152,7 @@ export class MSG implements MSGInterface {
 
 		this.#view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 		this.#byteLength = bytes.byteLength
-		this.#totalSectors = Math.ceil(this.#byteLength / MSG_S_BIG_BLOCK_SIZE)
+		this.#totalSectors = Math.ceil(this.#byteLength / MSG_SECTOR_SIZE)
 
 		const format = sniffFormat
 			? (detectFormat(name, mime) ?? (isMSGFile(this.#view) ? 'msg' : undefined))
@@ -319,7 +319,7 @@ export class MSG implements MSGInterface {
 		if (!isMSGFile(this.#view)) {
 			throw new MSGError('UNSUPPORTED', 'Input is not a recognized CFB/MSG file')
 		}
-		if (this.#byteLength < MSG_S_BIG_BLOCK_SIZE) {
+		if (this.#byteLength < MSG_SECTOR_SIZE) {
 			throw new MSGError('MALFORMED', 'File is smaller than the minimum CFB header size', {
 				byteLength: this.#byteLength,
 			})
@@ -328,7 +328,7 @@ export class MSG implements MSGInterface {
 		const v = this.#view
 		const sectorMark = v.getUint8(30)
 		this.#bigBlockSize =
-			sectorMark === MSG_L_BIG_BLOCK_MARK ? MSG_L_BIG_BLOCK_SIZE : MSG_S_BIG_BLOCK_SIZE
+			sectorMark === MSG_L_BIG_BLOCK_MARK ? MSG_L_BIG_BLOCK_SIZE : MSG_SECTOR_SIZE
 		this.#bigBlockLength = this.#bigBlockSize / 4
 		this.#xBlockLength = this.#bigBlockLength - 1
 
@@ -399,7 +399,7 @@ export class MSG implements MSGInterface {
 	// === FAT (Block Allocation Table)
 
 	#batCountInHeader(): number {
-		const max = (MSG_S_BIG_BLOCK_SIZE - MSG_HEADER_BAT_START_OFFSET) / 4
+		const max = (MSG_SECTOR_SIZE - MSG_HEADER_BAT_START_OFFSET) / 4
 		return Math.min(this.#batCount, max)
 	}
 
@@ -528,11 +528,11 @@ export class MSG implements MSGInterface {
 				this.#totalSectors,
 				'total sector count',
 			)
-			const entryCount = this.#bigBlockSize / MSG_PROPERTY_SIZE
+			const entryCount = this.#bigBlockSize / MSG_DIRECTORY_ENTRY_SIZE
 			let offset = this.#blockOffset(currentSector)
 
 			for (let i = 0; i < entryCount; i++) {
-				if (offset + MSG_PROPERTY_SIZE > this.#byteLength) break
+				if (offset + MSG_DIRECTORY_ENTRY_SIZE > this.#byteLength) break
 				const entryCategory = this.#view.getUint8(offset + MSG_PROP_CATEGORY_OFFSET)
 
 				if (
@@ -552,7 +552,7 @@ export class MSG implements MSGInterface {
 						sizeBlock: 0,
 					})
 				}
-				offset += MSG_PROPERTY_SIZE
+				offset += MSG_DIRECTORY_ENTRY_SIZE
 			}
 			currentSector = this.#nextBlock(currentSector)
 		}
@@ -663,7 +663,7 @@ export class MSG implements MSGInterface {
 		dest: Uint8Array,
 		destOffset: number,
 	): void {
-		const byteOffset = startBlock * MSG_SMALL_BLOCK_SIZE
+		const byteOffset = startBlock * MSG_MINI_SECTOR_SIZE
 		const bigBlockNumber = Math.floor(byteOffset / this.#bigBlockSize)
 		const bigBlockOffset = byteOffset % this.#bigBlockSize
 
@@ -679,7 +679,7 @@ export class MSG implements MSGInterface {
 		const result = new Uint8Array(entry.sizeBlock)
 		let idx = 0
 		for (const block of chain) {
-			const readLen = Math.min(result.length - idx, MSG_SMALL_BLOCK_SIZE)
+			const readLen = Math.min(result.length - idx, MSG_MINI_SECTOR_SIZE)
 			this.#readSmallBlockData(block, readLen, result, idx)
 			idx += readLen
 		}
@@ -717,7 +717,7 @@ export class MSG implements MSGInterface {
 			})
 		}
 
-		if (entry.sizeBlock < MSG_BIG_BLOCK_MIN_DOC_SIZE) {
+		if (entry.sizeBlock < MSG_MINI_STREAM_CUTOFF) {
 			const chain = this.#smallBlockChain(entry)
 			if (chain.length === 1) {
 				const result = new Uint8Array(entry.sizeBlock)

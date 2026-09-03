@@ -1,13 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { createMSG, isSuccess, isFailure, isMSGError } from '@src/core'
-
-const fixturesDir = fileURLToPath(new URL('./fixtures/', import.meta.url))
-
-function readFixture(name: string): Uint8Array {
-	return new Uint8Array(readFileSync(`${fixturesDir}${name}`))
-}
+import { readFixture } from '../../setupServer.js'
 
 // createMSG — the Result-returning boundary counterpart to `new MSG()`
 // (which parses eagerly and throws). createMSG surfaces every parse failure

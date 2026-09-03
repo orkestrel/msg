@@ -3,8 +3,9 @@
 // `document` / `window`: this package is core-only.
 //
 // The fleet-wide helpers live in `@orkestrel/test`. What remains here is what
-// is specific to this package: byte/eml fixture builders and the Vue-path
-// predicate, extracted the moment they could serve another test (AGENTS §16.1).
+// is specific to this package: the byte and eml fixture builders, extracted the
+// moment they could serve another test, per `.claude/rules/tests.md`
+// § Shared test infrastructure.
 
 // ── Byte fixture builders (generic, environment-agnostic) ──────────────────
 
@@ -63,10 +64,4 @@ export function buildNestedMultipart(depth: number): Uint8Array {
 		contentType = `multipart/mixed; boundary="${boundary}"`
 	}
 	return buildEml([['Content-Type', contentType]], body)
-}
-
-/** Whether a repository-relative Vue SFC path belongs to the private browser application. */
-export function isBrowserVuePath(path: string): boolean {
-	const normalized = path.replaceAll('\\', '/')
-	return normalized.startsWith('app/browser/')
 }

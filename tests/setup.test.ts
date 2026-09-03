@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-	asciiBytes,
-	buildEml,
-	buildNestedMultipart,
-	isBrowserVuePath,
-	patchBytes,
-} from './setup.js'
+import { asciiBytes, buildEml, buildNestedMultipart, patchBytes } from './setup.js'
 
 // `tests/setup.ts` is host-independent, so every contract it exports is reachable from the Node
 // environment this project runs in. Each case asserts what the consuming suites rely on and derives
@@ -134,18 +128,5 @@ describe('buildNestedMultipart', () => {
 
 		expect(first).not.toBe(second)
 		expect(first).toEqual(second)
-	})
-})
-
-describe('isBrowserVuePath', () => {
-	it('accepts a browser SFC path in either separator family', () => {
-		expect(isBrowserVuePath('app/browser/components/MessageList.vue')).toBe(true)
-		expect(isBrowserVuePath('app\\browser\\components\\MessageList.vue')).toBe(true)
-	})
-
-	it('refuses a sibling environment, a prefix lookalike, and an occurrence below the repository root', () => {
-		expect(isBrowserVuePath('app/core/components/MessageList.vue')).toBe(false)
-		expect(isBrowserVuePath('app/browserless/components/MessageList.vue')).toBe(false)
-		expect(isBrowserVuePath('packages/app/browser/components/MessageList.vue')).toBe(false)
 	})
 })

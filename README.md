@@ -5,9 +5,9 @@ parser — extracts headers, bodies, recipients, and attachments into typed
 structures. Feed it raw file bytes plus an optional file name or MIME hint; the
 format is detected automatically and the file is parsed into a structured
 `EmailChain` — sender, recipients, subject, date, text/HTML bodies, and
-decoded attachments. `.msg` files are read via a from-scratch CFB (Compound
+decoded attachments. `.msg` files are read through a from-scratch CFB (Compound
 File Binary / OLE2) parser that walks the directory tree and extracts MAPI
-properties directly; `.eml` files are read via a from-scratch RFC 2822/MIME
+properties directly; `.eml` files are read through a from-scratch RFC 2822/MIME
 parser that walks the header block and the (possibly nested) MIME part tree.
 `createMSG` surfaces every parse failure as a `Failure<MSGError>` inside a
 `Result` rather than throwing it; an unexpected non-`MSGError` error still
@@ -42,7 +42,7 @@ if (isSuccess(result)) {
 	console.log(message.html) // HTML body (includes quoted reply chain)
 
 	for (const attachment of message.attachments) {
-		console.log(attachment.name, attachment.mimeType, attachment.size)
+		console.log(attachment.name, attachment.mimeType, attachment.bytes.length)
 	}
 
 	console.log(msg.fields) // MSGFieldData | undefined (undefined for 'eml')

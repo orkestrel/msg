@@ -1,7 +1,4 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import {
 	MSG,
 	createMSG,
@@ -11,28 +8,23 @@ import {
 	MSG_HEADER_BAT_COUNT_OFFSET,
 	MSG_HEADER_BAT_START_OFFSET,
 	MSG_HEADER_PROPERTY_START_OFFSET,
-	MSG_S_BIG_BLOCK_SIZE,
 	MSG_L_BIG_BLOCK_SIZE,
 	MSG_L_BIG_BLOCK_MARK,
 	MSG_PROP_NAME_SIZE_OFFSET,
+	MSG_SECTOR_SIZE,
 } from '@src/core'
 import { requireValue } from '@orkestrel/test'
 import { patchBytes, buildEml } from '../../setup.js'
+import { readFixture } from '../../setupServer.js'
 
-// Mirrors src/core/MSG.ts 1:1 (AGENTS §16): the single MSG class parses both
-// .eml (RFC 2822 / MIME) and .msg (CFB/OLE2) input eagerly in its
-// constructor, throwing a typed MSGError on malformed/unsupported input.
+// Mirrors src/core/MSG.ts 1:1, as `.claude/rules/tests.md` § Test contract requires:
+// the single MSG class parses both .eml (RFC 2822 / MIME) and .msg (CFB/OLE2) input
+// eagerly in its constructor, throwing a typed MSGError on malformed/unsupported input.
 // createMSG wraps the same construction, surfacing every parse failure as a
 // Failure<MSGError> in the returned Result<MSGInterface, MSGError> rather
 // than throwing it; an unexpected non-MSGError error still propagates.
 
-// === Fixture helpers (file-local: binary loading stays inside the test file)
-
-const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
-
-function readFixture(name: string): Uint8Array {
-	return readFileSync(join(fixturesDir, name))
-}
+// === Fixture helpers
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 	const buffer = new ArrayBuffer(bytes.byteLength)
@@ -54,7 +46,7 @@ function withByteOffset(bytes: Uint8Array, offset: number): Uint8Array {
 function bigBlockSizeOf(bytes: Uint8Array): number {
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 	const mark = view.getUint8(30)
-	return mark === MSG_L_BIG_BLOCK_MARK ? MSG_L_BIG_BLOCK_SIZE : MSG_S_BIG_BLOCK_SIZE
+	return mark === MSG_L_BIG_BLOCK_MARK ? MSG_L_BIG_BLOCK_SIZE : MSG_SECTOR_SIZE
 }
 
 // === eml parsing
@@ -263,11 +255,7 @@ describe('MSG — msgInMsg.msg exercises an embedded .msg attachment', () => {
 		expect(innerIndex).toBeGreaterThanOrEqual(0)
 
 		const result = msg.attachment(innerIndex)
-		const view = new DataView(
-			result.bytes.buffer,
-			result.bytes.byteOffset,
-			result.bytes.byteLength,
-		)
+		const view = new DataView(result.bytes.buffer, result.bytes.byteOffset, result.bytes.byteLength)
 		expect(isMSGFile(view)).toBe(true)
 
 		const innerMsg = new MSG(toArrayBuffer(result.bytes))

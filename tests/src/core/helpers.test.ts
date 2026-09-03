@@ -1,6 +1,4 @@
 import type { Result } from '@src/core'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import {
 	success,
@@ -8,6 +6,7 @@ import {
 	isSuccess,
 	isFailure,
 	isMSGFile,
+	MSG_FILE_HEADER,
 	truncateAtNull,
 	readUTF16String,
 	decodeText,
@@ -36,17 +35,12 @@ import {
 } from '@src/core'
 import { captureError, requireValue } from '@orkestrel/test'
 import { asciiBytes, buildEml, buildNestedMultipart } from '../../setup.js'
+import { readFixture } from '../../setupServer.js'
 
-const FIXTURES_DIR = fileURLToPath(new URL('./fixtures/', import.meta.url))
-
-function readFixture(name: string): DataView {
-	const buffer = readFileSync(`${FIXTURES_DIR}${name}`)
-	return new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength)
-}
-
-// helpers.ts is the root-level exported utility surface for @src/core — pure
-// leaves with no instance state (AGENTS §5). Each exported helper gets its
-// own describe block covering happy path, edge cases, and error paths.
+// helpers.ts is the root-level exported utility surface for @src/core — the pure
+// leaves `.claude/rules/architecture.md` § Functions and orchestration places there,
+// with no instance state. Each exported helper gets its own describe block covering
+// happy path, edge cases, and error paths.
 
 describe('Result helpers', () => {
 	describe('success / failure', () => {
@@ -348,7 +342,8 @@ describe('compareCFBName', () => {
 
 describe('isMSGFile', () => {
 	it('returns true for a real CFB fixture', () => {
-		expect(isMSGFile(readFixture('test.msg'))).toBe(true)
+		const bytes = readFixture('test.msg')
+		expect(isMSGFile(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength))).toBe(true)
 	})
 
 	it('returns false for arbitrary ascii bytes', () => {
@@ -359,6 +354,16 @@ describe('isMSGFile', () => {
 	it('returns false for an empty buffer', () => {
 		const bytes = new Uint8Array(0)
 		expect(isMSGFile(new DataView(bytes.buffer))).toBe(false)
+	})
+
+	it('keeps answering after a consumer tries to write the published signature', () => {
+		// MSG_FILE_HEADER reaches consumers through the barrel and isMSGFile reads it on
+		// every call, so an accepted write would break the check for the rest of the process.
+		expect(Reflect.set(MSG_FILE_HEADER, 0, 0x00)).toBe(false)
+		expect(MSG_FILE_HEADER[0]).toBe(0xd0)
+
+		const bytes = readFixture('test.msg')
+		expect(isMSGFile(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength))).toBe(true)
 	})
 })
 

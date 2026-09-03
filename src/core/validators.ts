@@ -44,8 +44,10 @@ export function isEmailAttachment(value: unknown): value is EmailAttachment {
 export function isEmailMessage(value: unknown): value is EmailMessage {
 	if (!isRecord(value)) return false
 	if (typeof value.from !== 'string') return false
-	if (!Array.isArray(value.to) || !value.to.every((address) => typeof address === 'string')) return false
-	if (!Array.isArray(value.cc) || !value.cc.every((address) => typeof address === 'string')) return false
+	if (!Array.isArray(value.to) || !value.to.every((address) => typeof address === 'string'))
+		return false
+	if (!Array.isArray(value.cc) || !value.cc.every((address) => typeof address === 'string'))
+		return false
 	if (typeof value.subject !== 'string') return false
 	if (value.date !== undefined && !(value.date instanceof Date)) return false
 	if (typeof value.text !== 'string') return false

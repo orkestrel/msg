@@ -5,14 +5,15 @@ import {
 	isMSGError,
 	isMSGFile,
 	MSG,
-	MSG_BURNER_DIR_ENTRY_SIZE,
-	MSG_BURNER_MINI_STREAM_CUTOFF,
 	MSG_BURNER_NAME_MAX,
-	MSG_BURNER_SECTOR_SIZE,
+	MSG_BURNER_ROOT_CLSID,
 	MSG_CATEGORY_DIRECTORY,
 	MSG_CATEGORY_DOCUMENT,
 	MSG_CATEGORY_ROOT,
+	MSG_DIRECTORY_ENTRY_SIZE,
 	MSG_END_OF_CHAIN,
+	MSG_MINI_STREAM_CUTOFF,
+	MSG_SECTOR_SIZE,
 } from '@src/core'
 import { captureError, requireValue } from '@orkestrel/test'
 
@@ -21,13 +22,13 @@ import { captureError, requireValue } from '@orkestrel/test'
 // reachable through `children` indices. The load-bearing behavior: entries
 // below the mini-stream cutoff land in the mini-FAT/mini-stream, entries
 // at/above it land in the regular FAT sectors, the directory red-black tree
-// is built via compareCFBName (length-first, then case-insensitive)
+// is built through compareCFBName (length-first, then case-insensitive)
 // ordering, directory entry names are capped at MSG_BURNER_NAME_MAX UTF-16
 // units, and every failure surfaces as a typed MSGError (code BURN) — never
-// a raw TypeError. Round-trips are verified by re-parsing burned output with
-// the real MSG parser (no mocks, per AGENTS §16). These cases are re-homed
-// from the retired MSGBurner.test.ts, calling the pure burnCFB shaper
-// directly instead of the retired MSGBurner class.
+// a raw TypeError. Round-trips are verified by re-parsing burned output with the
+// real MSG parser, never a mock, as `.claude/rules/tests.md` § Test contract
+// requires. These cases are re-homed from the retired MSGBurner.test.ts, calling
+// the pure burnCFB shaper directly instead of the retired MSGBurner class.
 
 describe('burnCFB — minimal burn', () => {
 	it('burns a root-only entry list into a valid CFB file', () => {
@@ -40,11 +41,25 @@ describe('burnCFB — minimal burn', () => {
 
 		expect(isMSGFile(view)).toBe(true)
 	})
+
+	it('writes the root CLSID a consumer cannot have overwritten', () => {
+		// MSG_BURNER_ROOT_CLSID reaches consumers through the barrel and burnCFB copies it
+		// into every root entry, so an accepted write would corrupt every later burn.
+		expect(Reflect.set(MSG_BURNER_ROOT_CLSID, 0, 0x00)).toBe(false)
+		expect(MSG_BURNER_ROOT_CLSID[0]).toBe(0x0b)
+
+		const entries: MSGBurnerEntry[] = [
+			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [], length: 0 },
+		]
+		const burned = Array.from(burnCFB(entries)).join(',')
+
+		expect(burned).toContain(Array.from(MSG_BURNER_ROOT_CLSID).join(','))
+	})
 })
 
 describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 	it('burns and round-trips a stream one byte UNDER the cutoff (mini-stream)', () => {
-		const payload = new Uint8Array(MSG_BURNER_MINI_STREAM_CUTOFF - 1)
+		const payload = new Uint8Array(MSG_MINI_STREAM_CUTOFF - 1)
 		for (let i = 0; i < payload.length; i++) payload[i] = (i * 5 + 1) % 251
 
 		const entries: MSGBurnerEntry[] = [
@@ -72,7 +87,7 @@ describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 	})
 
 	it('burns and round-trips a stream one byte OVER the cutoff (standard sectors)', () => {
-		const payload = new Uint8Array(MSG_BURNER_MINI_STREAM_CUTOFF + 1)
+		const payload = new Uint8Array(MSG_MINI_STREAM_CUTOFF + 1)
 		for (let i = 0; i < payload.length; i++) payload[i] = (i * 7 + 3) % 251
 
 		const entries: MSGBurnerEntry[] = [
@@ -165,12 +180,12 @@ describe('burnCFB — multiple children and directory ordering', () => {
 
 		const binary = burnCFB(entries)
 		const view = new DataView(binary.buffer, binary.byteOffset, binary.byteLength)
-		const directory = MSG_BURNER_SECTOR_SIZE
+		const directory = MSG_SECTOR_SIZE
 		const root = directory
-		const first = directory + MSG_BURNER_DIR_ENTRY_SIZE
-		const second = directory + MSG_BURNER_DIR_ENTRY_SIZE * 2
-		const third = directory + MSG_BURNER_DIR_ENTRY_SIZE * 3
-		const fourth = directory + MSG_BURNER_DIR_ENTRY_SIZE * 4
+		const first = directory + MSG_DIRECTORY_ENTRY_SIZE
+		const second = directory + MSG_DIRECTORY_ENTRY_SIZE * 2
+		const third = directory + MSG_DIRECTORY_ENTRY_SIZE * 3
+		const fourth = directory + MSG_DIRECTORY_ENTRY_SIZE * 4
 
 		expect(view.getInt32(root + 0x4c, true)).toBe(1)
 		expect(view.getUint8(first + 0x43)).toBe(1)
@@ -298,8 +313,7 @@ describe('burnCFB — DIFAT allocation boundary', () => {
 		const view = new DataView(binary.buffer, binary.byteOffset, binary.byteLength)
 		const firstDifatSector = view.getInt32(0x44, true)
 		const finalLink =
-			MSG_BURNER_SECTOR_SIZE * (1 + firstDifatSector) +
-			(MSG_BURNER_SECTOR_SIZE - Int32Array.BYTES_PER_ELEMENT)
+			MSG_SECTOR_SIZE * (1 + firstDifatSector) + (MSG_SECTOR_SIZE - Int32Array.BYTES_PER_ELEMENT)
 
 		expect(view.getInt32(0x2c, true)).toBe(236)
 		expect(view.getInt32(finalLink, true)).toBe(MSG_END_OF_CHAIN)

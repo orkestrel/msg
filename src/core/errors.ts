@@ -13,7 +13,7 @@ import type { MSGErrorCode } from './types.js'
  * Carries a machine-readable {@link MSGErrorCode} so a `catch` (or a
  * `Failure.error` branch) can dispatch on `error.code` instead of parsing
  * the message text. `context` carries whatever structured detail the
- * throwing site has on hand (e.g. `{ offset, expected }`).
+ * throwing site has on hand, for example `{ offset, expected }`.
  *
  * @example
  * ```ts

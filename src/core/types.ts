@@ -76,9 +76,9 @@ export interface MSGDirectoryEntry {
 }
 
 /**
- * Represents an internal mutable accumulator used during MSG field extraction.
- * Properties are assigned dynamically via index signature and
- * narrowed to the readonly {@link MSGFieldData} at the public boundary.
+ * Represents an internal accumulator for MSG field extraction whose members are all readonly.
+ * The extraction path writes each resolved field through `Object.assign`, then narrows the
+ * accumulator to {@link MSGFieldData} at the public boundary.
  */
 export interface MSGMutableFieldData {
 	readonly category: 'msg' | 'attachment' | 'recipient'
@@ -320,7 +320,7 @@ export type EmailFormat = 'eml' | 'msg'
  *
  * @remarks
  * - `value` — primary header value (before first semicolon)
- * - `params` — key-value parameter map (e.g. charset, boundary)
+ * - `params` — key-value parameter map, for example `charset` and `boundary`
  */
 export interface MIMEHeader {
 	readonly value: string
@@ -430,7 +430,7 @@ export interface MSGOptions {
  *
  * @remarks
  * - `options` — configuration used to parse this instance
- * - `chain` — the parsed email chain (format available via `chain.format`)
+ * - `chain` — the parsed email chain (format available through `chain.format`)
  * - `fields` — MSG field data, or `undefined` when the parsed format is `'eml'`
  * - `attachment` — read attachment binary content by index
  * - `burn` — rebuild the parsed MSG as a standalone CFB/.msg binary

@@ -5,7 +5,9 @@ import type { MSGFieldType } from './types.js'
 /**
  * Holds the CFB magic header bytes (0xD0CF11E0A1B11AE1).
  */
-export const MSG_FILE_HEADER = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
+export const MSG_FILE_HEADER: readonly number[] = Object.freeze([
+	0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1,
+])
 
 /**
  * Names the sentinel for unused blocks in the FAT.
@@ -18,12 +20,13 @@ export const MSG_UNUSED_BLOCK = -1
 export const MSG_END_OF_CHAIN = -2
 
 /**
- * Holds the small sector size (512 bytes).
+ * Holds the standard CFB sector size in bytes (512), read when the header's
+ * sector shift is `MSG_S_BIG_BLOCK_MARK` and written by every burn.
  */
-export const MSG_S_BIG_BLOCK_SIZE = 0x0200
+export const MSG_SECTOR_SIZE = 0x0200
 
 /**
- * Holds the small sector size mark in the header (byte at offset 30).
+ * Holds the header sector-shift value selecting `MSG_SECTOR_SIZE` (byte at offset 30).
  */
 export const MSG_S_BIG_BLOCK_MARK = 9
 
@@ -38,14 +41,14 @@ export const MSG_L_BIG_BLOCK_SIZE = 0x1000
 export const MSG_L_BIG_BLOCK_MARK = 12
 
 /**
- * Holds the mini-stream sector size (64 bytes).
+ * Holds the CFB mini-stream sector size in bytes (64).
  */
-export const MSG_SMALL_BLOCK_SIZE = 0x0040
+export const MSG_MINI_SECTOR_SIZE = 0x0040
 
 /**
- * Sets the threshold below which data is stored in the mini-stream.
+ * Sets the stream size below which a stream is stored in the mini-stream (4096).
  */
-export const MSG_BIG_BLOCK_MIN_DOC_SIZE = 0x1000
+export const MSG_MINI_STREAM_CUTOFF = 0x1000
 
 /**
  * Locates the property (directory) start sector in the header.
@@ -96,9 +99,9 @@ export const MSG_PROP_NO_INDEX = -1
 export const MSG_MAX_HIERARCHY_DEPTH = 64
 
 /**
- * Holds the directory entry size in bytes.
+ * Holds the CFB directory entry size in bytes (128).
  */
-export const MSG_PROPERTY_SIZE = 0x0080
+export const MSG_DIRECTORY_ENTRY_SIZE = 0x0080
 
 /**
  * Locates the name byte length within a directory entry.
@@ -351,34 +354,14 @@ export const MSG_PIDLID_MAPPING: Readonly<Record<string, Readonly<Record<number,
 // === MSGBurner
 
 /**
- * Holds the standard CFB sector size in bytes (512).
- */
-export const MSG_BURNER_SECTOR_SIZE = 512
-
-/**
- * Holds the CFB mini-stream sector size in bytes (64).
- */
-export const MSG_BURNER_MINI_SECTOR_SIZE = 64
-
-/**
- * Sets the threshold below which streams are stored in the mini-stream (4096).
- */
-export const MSG_BURNER_MINI_STREAM_CUTOFF = 4096
-
-/**
  * Holds the number of 32-bit integers per standard sector (128).
  */
-export const MSG_BURNER_INTS_PER_SECTOR = MSG_BURNER_SECTOR_SIZE / 4
+export const MSG_BURNER_INTS_PER_SECTOR = MSG_SECTOR_SIZE / 4
 
 /**
  * Caps the DIFAT entries stored in the CFB header (109).
  */
 export const MSG_BURNER_DIFAT_HEADER_SLOTS = 109
-
-/**
- * Holds the CFB directory entry size in bytes (128).
- */
-export const MSG_BURNER_DIR_ENTRY_SIZE = 128
 
 /**
  * Marks a sector as holding FAT data (-3).
@@ -400,7 +383,7 @@ export const MSG_BURNER_NAME_MAX = 31
 /**
  * Holds the root entry CLSID for MSG compound files.
  */
-export const MSG_BURNER_ROOT_CLSID = new Uint8Array([
+export const MSG_BURNER_ROOT_CLSID: readonly number[] = Object.freeze([
 	0x0b, 0x0d, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
 ])
 
