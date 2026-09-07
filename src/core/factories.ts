@@ -21,7 +21,7 @@ import { isMSGError } from './errors.js'
  * @returns A `Result` carrying a working {@link MSGInterface} on success,
  * or the {@link MSGError} on failure
  *
- * @example Factories
+ * @example Parse an email file and read its format
  * ```ts
  * import { createMSG, isSuccess } from '@orkestrel/msg'
  *
