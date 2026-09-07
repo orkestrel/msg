@@ -1,7 +1,8 @@
 import type { EmailAttachment, EmailChain, EmailFormat, EmailMessage } from './types.js'
 
 /**
- * Narrows an unknown value to a plain record.
+ * Narrows an unknown value to a plain record: a total from-unknown guard, true for a non-null,
+ * non-array object.
  *
  * @param value - Value to check
  * @returns True if value is a non-null, non-array object; false otherwise
@@ -11,7 +12,8 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Narrows an unknown value to a valid EmailFormat.
+ * Narrows an unknown value to a valid {@link EmailFormat}: a total from-unknown guard, true for
+ * `'eml'` and `'msg'`.
  *
  * @param value - Value to check
  * @returns True if value is 'eml' or 'msg'; false otherwise
@@ -21,7 +23,8 @@ export function isEmailFormat(value: unknown): value is EmailFormat {
 }
 
 /**
- * Narrows an unknown value to {@link EmailAttachment}.
+ * Narrows an unknown value to an {@link EmailAttachment}: a total from-unknown guard over
+ * `name`, `mimeType`, and `bytes`.
  *
  * @param value - Value to test
  * @returns True if `value` structurally matches {@link EmailAttachment}; false otherwise
@@ -36,7 +39,8 @@ export function isEmailAttachment(value: unknown): value is EmailAttachment {
 }
 
 /**
- * Narrows an unknown value to {@link EmailMessage}.
+ * Narrows an unknown value to an {@link EmailMessage}: a total from-unknown guard over every
+ * member, validating `attachments` recursively through {@link isEmailAttachment}.
  *
  * @param value - Value to test
  * @returns True if `value` structurally matches {@link EmailMessage}; false otherwise
@@ -62,7 +66,8 @@ export function isEmailMessage(value: unknown): value is EmailMessage {
 }
 
 /**
- * Narrows an unknown value to {@link EmailChain}.
+ * Narrows an unknown value to an {@link EmailChain}: a total from-unknown guard over `format`
+ * and `messages`, validating `messages` recursively through {@link isEmailMessage}.
  *
  * @param value - Value to test
  * @returns True if `value` structurally matches {@link EmailChain}; false otherwise

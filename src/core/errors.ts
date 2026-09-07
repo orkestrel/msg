@@ -7,7 +7,8 @@ import type { MSGErrorCode } from './types.js'
 // file never throws across that boundary.
 
 /**
- * Represents an error thrown or returned by the MSG/EML parsing and burning surfaces.
+ * Represents an error thrown or returned by the MSG/EML parsing and burning surfaces, carrying a
+ * machine-readable {@link MSGErrorCode} and optional structured `context`.
  *
  * @remarks
  * Carries a machine-readable {@link MSGErrorCode} so a `catch` (or a

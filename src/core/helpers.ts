@@ -45,7 +45,7 @@ export function failure<E>(error: E): Failure<E> {
 }
 
 /**
- * Narrows a Result to Success.
+ * Narrows a {@link Result} to a {@link Success}.
  *
  * @param result - Result to check
  * @returns True if result is Success; false otherwise
@@ -55,7 +55,7 @@ export function isSuccess<T, E>(result: Result<T, E>): result is Success<T> {
 }
 
 /**
- * Narrows a Result to Failure.
+ * Narrows a {@link Result} to a {@link Failure}.
  *
  * @param result - Result to check
  * @returns True if result is Failure; false otherwise
@@ -67,7 +67,7 @@ export function isFailure<T, E>(result: Result<T, E>): result is Failure<E> {
 // === MSG Helpers
 
 /**
- * Truncates a string at its first NUL character.
+ * Truncates a string at its first `\0` character.
  *
  * @param text - Input string
  * @returns The text before the first NUL, or the whole text when it carries none
@@ -81,7 +81,8 @@ export function truncateAtNull(text: string): string {
 }
 
 /**
- * Reads a UTF-16LE string from a DataView.
+ * Reads a UTF-16LE string out of a `DataView`, throwing when the requested range exceeds the
+ * view's bounds.
  *
  * @param view - DataView to read from
  * @param offset - Byte offset to start reading
@@ -108,9 +109,12 @@ export function readUTF16String(view: DataView, offset: number, charCount: numbe
 }
 
 /**
- * Decodes bytes into a string using the named encoding. Default:
- * `windows-1252`. Every branch runs a pure-ES decoder — no `TextDecoder`
- * dependency, so this stays usable in the core's DOM/Node-free environment.
+ * Decodes bytes into a string with a pure-ES decoder, dispatching on the named encoding. Default:
+ * `windows-1252`.
+ *
+ * @remarks
+ * Every branch runs a pure-ES decoder — no `TextDecoder` dependency — so this stays usable in the
+ * core's DOM/Node-free environment.
  *
  * @param bytes - Binary data
  * @param encoding - Encoding to decode with. Default: `'windows-1252'`
@@ -133,9 +137,11 @@ export function decodeText(bytes: Uint8Array, encoding?: MSGEncoding): string {
 }
 
 /**
- * Converts a Windows FILETIME (100-ns intervals since 1601-01-01) to a UTC date string.
- * Combines the low/high 32-bit halves with `BigInt` so the 64-bit interval
- * count never loses precision to float64 rounding.
+ * Converts a Windows FILETIME (100-ns ticks since 1601-01-01) to a UTC date string.
+ *
+ * @remarks
+ * Combines the low and high 32-bit halves with `BigInt`, so the 64-bit interval count never loses
+ * precision to float64 rounding.
  *
  * @param low - Low 32 bits of FILETIME
  * @param high - High 32 bits of FILETIME
@@ -148,7 +154,7 @@ export function fileTimeToUTCString(low: number, high: number): string {
 }
 
 /**
- * Converts a number to a lowercase hex string with specified padding.
+ * Converts a number to a zero-padded lowercase hex string of the requested digit count.
  *
  * @param value - Number to convert
  * @param length - Minimum hex string length (zero-padded)
@@ -166,7 +172,8 @@ export function toHexLower(value: number, length: number): string {
 }
 
 /**
- * Reads a mixed-endian Microsoft UUID from a byte array.
+ * Reads a mixed-endian Microsoft UUID starting at an offset in a byte array, throwing past the
+ * array's bounds.
  *
  * @param bytes - Byte array containing the UUID
  * @param offset - Byte offset to start reading
@@ -191,7 +198,7 @@ export function readMicrosoftUUID(bytes: Uint8Array, offset: number): string {
 }
 
 /**
- * Validates that a DataView starts with the CFB magic header.
+ * Reports whether a `DataView`'s first 8 bytes match the CFB magic signature.
  *
  * @param view - DataView to check
  * @returns True if the first 8 bytes match the CFB signature; false otherwise
@@ -207,7 +214,7 @@ export function isMSGFile(view: DataView): boolean {
 // === MSGBurner Helpers
 
 /**
- * Rounds a value up to the nearest multiple of a boundary.
+ * Rounds a value up to the nearest multiple of a boundary, which must be a power of 2.
  *
  * @param value - Number to round
  * @param boundary - Must be a power of 2
@@ -218,7 +225,8 @@ export function roundUpToMultiple(value: number, boundary: number): number {
 }
 
 /**
- * Computes how many sectors are needed to hold a given byte count.
+ * Computes how many sectors of a given size hold a byte count, answering 0 for a count at or
+ * below zero.
  *
  * @param bytes - Total byte count
  * @param sectorSize - Sector size in bytes
@@ -230,8 +238,8 @@ export function computeSectors(bytes: number, sectorSize: number): number {
 }
 
 /**
- * Orders two directory names as the compound file format requires.
- * Compares by UTF-16 length first, then by uppercased code points.
+ * Orders two directory names as the compound file format requires, comparing by UTF-16 length
+ * first and then by uppercased code points.
  *
  * @param a - First name
  * @param b - Second name
@@ -250,8 +258,8 @@ export function compareCFBName(a: string, b: string): number {
 // === Pure-ES Encoding Decoders
 
 /**
- * Decodes a Base64 string into raw bytes without relying on `atob`.
- * Ignores ASCII whitespace and tolerates missing padding.
+ * Decodes a Base64 string into raw bytes without relying on `atob`, ignoring ASCII whitespace and
+ * tolerating missing padding.
  *
  * @param text - Base64-encoded string
  * @returns Decoded byte array
@@ -287,8 +295,8 @@ export function decodeBase64(text: string): Uint8Array {
 }
 
 /**
- * Encodes a string into UTF-8 bytes, handling surrogate pairs.
- * A lone (unpaired) surrogate encodes as U+FFFD.
+ * Encodes a string into UTF-8 bytes, pairing surrogates and encoding a lone (unpaired) surrogate
+ * as U+FFFD.
  *
  * @param text - String to encode
  * @returns UTF-8 byte array
@@ -336,11 +344,13 @@ export function encodeUTF8(text: string): Uint8Array {
 }
 
 /**
- * Decodes UTF-8 bytes into a string, WHATWG-style: an invalid byte
- * sequence decodes as U+FFFD rather than throwing. Rejects overlong
- * encodings, surrogate code points (0xD800-0xDFFF), and code points
- * beyond 0x10FFFF — each invalid sequence yields exactly one U+FFFD
- * and decoding resumes at the next lead byte.
+ * Decodes UTF-8 bytes into a string WHATWG-style: an invalid byte sequence decodes as U+FFFD
+ * rather than throwing.
+ *
+ * @remarks
+ * Rejects an overlong encoding, a surrogate code point (`0xD800`-`0xDFFF`), and a code point
+ * beyond `0x10FFFF`. Each invalid sequence yields exactly one U+FFFD, and decoding resumes at the
+ * next lead byte.
  *
  * @param bytes - UTF-8 byte array
  * @returns Decoded string
@@ -453,8 +463,8 @@ export function decodeLatin1(bytes: Uint8Array): string {
 }
 
 /**
- * Decodes Windows-1252 bytes into a string. Identical to {@link decodeLatin1}
- * except for the 0x80-0x9F range, which maps through {@link WINDOWS_1252_HIGH}.
+ * Decodes Windows-1252 bytes into a string, resolving the `0x80`-`0x9F` range through
+ * {@link WINDOWS_1252_HIGH} and otherwise matching {@link decodeLatin1}.
  *
  * @param bytes - Windows-1252 byte array
  * @returns Decoded string
@@ -481,9 +491,9 @@ export function decodeWindows1252(bytes: Uint8Array): string {
 }
 
 /**
- * Resolves a free-form charset label (as seen in a MIME `charset` parameter)
- * to a supported {@link MSGEncoding}. Unknown or absent labels fall back
- * to {@link FALLBACK_CHARSET}.
+ * Resolves a free-form charset label, as a MIME `charset` parameter carries it, to a supported
+ * {@link MSGEncoding}, falling back to {@link FALLBACK_CHARSET}'s encoding for an unrecognized or
+ * absent label.
  *
  * @param label - Charset label to resolve (case-insensitive)
  * @returns Resolved encoding
@@ -514,8 +524,8 @@ export function resolveEncoding(label: string | undefined): MSGEncoding {
 // === EmailParser Helpers
 
 /**
- * Derives the EmailFormat from a file name, a MIME type, or both.
- * Returns undefined when the format cannot be determined.
+ * Derives the {@link EmailFormat} from a file name, a MIME type, or both, answering `undefined`
+ * when neither hints at a format.
  *
  * @param name - File name to inspect
  * @param mime - MIME type to inspect
@@ -547,7 +557,7 @@ export function detectFormat(
 }
 
 /**
- * Parses headers from a raw RFC 2822 / MIME header text block.
+ * Parses an RFC 2822 / MIME header block, folding continuation lines.
  *
  * @param text - Raw header text
  * @returns Map of parsed header objects
@@ -596,7 +606,8 @@ export function parseMIMEHeaders(text: string): ReadonlyMap<string, MIMEHeader> 
 }
 
 /**
- * Decodes a MIME-encoded body string into a raw byte array.
+ * Decodes a MIME body — `base64`, `quoted-printable`, or passthrough — into raw bytes, throwing
+ * on invalid Base64.
  *
  * @param body - Raw encoded string
  * @param encoding - Encoding type, for example 'base64' or 'quoted-printable'
@@ -636,8 +647,8 @@ export function decodeMIMEEncoding(body: string, encoding: string): Uint8Array {
 }
 
 /**
- * Decodes a MIME-encoded body into a text string based on an arbitrary
- * charset label, resolved through {@link resolveEncoding}.
+ * Decodes a MIME body to text through {@link decodeMIMEEncoding} and {@link resolveEncoding},
+ * taking the charset from a free-form label.
  *
  * @param body - Raw encoded string
  * @param encoding - Transfer encoding type
@@ -654,8 +665,8 @@ export function decodeMIMEText(body: string, encoding: string, charset: string):
 }
 
 /**
- * Decodes RFC 2047 encoded words in header values.
- * Handles both Base64 (B) and Quoted-Printable (Q) forms.
+ * Decodes the RFC 2047 encoded words (`=?charset?B/Q?...?=`) in a header value, reading the
+ * Base64 (`B`) and quoted-printable (`Q`) forms alike.
  *
  * @param text - Header value string potentially containing encoded words
  * @returns Decoded string
@@ -690,7 +701,8 @@ export function decodeMIMEWords(text: string): string {
 }
 
 /**
- * Formats a name and email into a standard composite address.
+ * Formats a display name and an email address into `"Name <email>"`, or into whichever half is
+ * present.
  *
  * @param name - Display name
  * @param email - Email address
@@ -707,8 +719,8 @@ export function formatEmailAddress(name: string | undefined, email: string | und
 // === Attachment Helpers
 
 /**
- * Infers the file extension for an attachment based on its filename or MIME type.
- * Returns the extension including the dot, for example '.jpg'.
+ * Infers an attachment's file extension from its file name or its MIME type, returning the
+ * extension with its leading dot and falling back to `.bin`.
  *
  * @param mimeType - MIME type to infer from
  * @param fileName - File name to infer from

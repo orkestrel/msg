@@ -82,13 +82,14 @@ import { burnCFB, extractMessage, extractMessageFromMSG } from './shapers.js'
 // === MSG
 
 /**
- * Parses raw .eml or .msg file bytes into a structured {@link EmailChain},
- * exposing (for .msg input) the raw MAPI field tree, attachment binary
- * access, and CFB reconstitution. Every parsing step treats the input as
- * untrusted: sector and property chains are cycle-guarded and
- * length-capped, every raw byte range is bounds-checked before a view is
- * constructed over it, and every failure surfaces as a typed
- * {@link MSGError} rather than a raw `RangeError` or `TypeError`.
+ * Parses raw `.eml` or `.msg` file bytes into a structured {@link EmailChain}, exposing — for
+ * `.msg` input — the raw MAPI field tree, attachment binary access, and CFB reconstitution.
+ *
+ * @remarks
+ * Every parsing step treats the input as untrusted: sector and property chains are cycle-guarded
+ * and length-capped, every raw byte range is bounds-checked before a view is constructed over it,
+ * and every failure surfaces as a typed {@link MSGError} rather than a raw `RangeError` or
+ * `TypeError`.
  *
  * @example
  * ```ts

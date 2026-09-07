@@ -1,7 +1,7 @@
 // === Result Pattern
 
 /**
- * Represents a successful operation result.
+ * Represents a successful `Result`, carrying the value the operation produced.
  */
 export interface Success<T> {
 	readonly success: true
@@ -9,7 +9,7 @@ export interface Success<T> {
 }
 
 /**
- * Represents a failed operation result.
+ * Represents a failed `Result`, carrying the error the operation produced.
  */
 export interface Failure<E> {
 	readonly success: false
@@ -93,7 +93,7 @@ export interface MSGMutableFieldData {
 }
 
 /**
- * Represents a resolved named property entry from the __nameid_version1.0 storage.
+ * Represents a resolved named property entry from the `__nameid_version1.0` storage.
  */
 export interface MSGNameIdEntry {
 	readonly useName: boolean
@@ -103,8 +103,9 @@ export interface MSGNameIdEntry {
 }
 
 /**
- * Describes a CFB entry for the MSG burner (CFB binary writer).
- * Entries form a flat list starting with the root storage at index 0.
+ * Describes one CFB entry for {@link burnCFB}, the compound-file binary writer. Entries form a
+ * flat list whose root storage sits at index 0, each entry's children reachable through its
+ * `children` indices.
  *
  * @remarks
  * - `category` — the entry's object-category byte, written to the Compound File
@@ -135,8 +136,8 @@ export interface MSGBurnerLiteEntry {
 }
 
 /**
- * Holds parsed field data extracted from an MSG file.
- * Represents the root message, an attachment, or a recipient.
+ * Holds the field data parsed out of one MSG entity — the root message, an attachment, or a
+ * recipient — across its email, recipient, attachment, contact, and appointment fields.
  *
  * @remarks
  * - `category` — discriminator: 'msg', 'attachment', or 'recipient'
@@ -282,7 +283,7 @@ export interface MSGAttachment {
 }
 
 /**
- * Represents a parsed MSG source an email shaper reads from: the field tree plus
+ * Represents the parsed MSG source {@link extractMessageFromMSG} reads from: the field tree plus
  * indexed attachment access.
  *
  * @remarks
@@ -293,14 +294,15 @@ export interface MSGAttachment {
  */
 export interface MSGSourceInterface {
 	/**
-	 * Reads the parsed MAPI field tree.
+	 * Reads the parsed MAPI field tree {@link extractMessageFromMSG} projects into an
+	 * {@link EmailMessage}.
 	 *
 	 * @returns The root message's field data
 	 */
 	parse(): MSGFieldData
 
 	/**
-	 * Reads attachment binary content by index.
+	 * Reads attachment binary content by zero-based index, returning its `name` and `bytes`.
 	 *
 	 * @param index - Zero-based index into the parsed attachment list
 	 * @returns File name and raw binary content
@@ -316,7 +318,7 @@ export interface MSGSourceInterface {
 export type EmailFormat = 'eml' | 'msg'
 
 /**
- * Represents a parsed MIME header with value and parameter map.
+ * Represents a parsed MIME header: its primary value and its parameter map.
  *
  * @remarks
  * - `value` — primary header value (before first semicolon)
@@ -392,7 +394,7 @@ export interface EmailChain {
 }
 
 /**
- * Represents raw email input handed to an EmailParser.
+ * Represents the raw email input handed to {@link createMSG} or `new MSG()`.
  *
  * @remarks
  * - `bytes` — raw file content
@@ -408,8 +410,8 @@ export interface EmailInput {
 // === MSG
 
 /**
- * Represents raw input accepted by {@link createMSG}: binary MSG bytes or an
- * {@link EmailInput} for EML/MSG email parsing.
+ * Represents the raw input {@link createMSG} and `new MSG()` accept: binary MSG bytes, an
+ * `ArrayBuffer` over them, or an {@link EmailInput} carrying a file-name or MIME hint.
  */
 export type MSGInput = Uint8Array | ArrayBuffer | EmailInput
 
@@ -441,11 +443,13 @@ export interface MSGInterface {
 	readonly fields: MSGFieldData | undefined
 
 	/**
-	 * Reads attachment binary content by index.
+	 * Reads attachment binary content by zero-based index, returning its `name` and `bytes`.
+	 * Requires `'msg'` input: `'eml'` input carries no MAPI field tree, so every index throws —
+	 * read an `.eml` file's attachments from `chain.messages[0].attachments` instead.
 	 *
-	 * Requires `'msg'` input. For `'eml'` input the MAPI field tree this index
-	 * addresses is absent, so every index throws; read an `.eml` file's
-	 * attachments from `chain.messages[0].attachments` instead.
+	 * @remarks
+	 * An embedded `.msg` attachment reconstitutes its stored directory subtree; an ordinary
+	 * attachment reads its `dataId` stream directly.
 	 *
 	 * @param index - Zero-based index into the parsed attachment list
 	 * @returns File name and raw binary content
@@ -455,11 +459,12 @@ export interface MSGInterface {
 	attachment(index: number): MSGAttachment
 
 	/**
-	 * Rebuilds the parsed MSG as a standalone CFB/.msg binary.
+	 * Rebuilds the whole parsed message as a standalone CFB/`.msg` binary, from the directory
+	 * entry list and allocated sector map read during construction.
 	 *
 	 * @returns Complete CFB byte stream
-	 * @throws {@link MSGError} with code `BURN` when the parsed structure
-	 * cannot be reconstituted
+	 * @throws {@link MSGError} with code `BURN` when the parsed structure — `.eml` input, or a
+	 * missing root entry — cannot be reconstituted
 	 */
 	burn(): Uint8Array
 }

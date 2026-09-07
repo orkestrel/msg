@@ -35,15 +35,14 @@ import {
 } from './helpers.js'
 
 /**
- * Reconstitutes a valid CFB (Compound Binary File) from a flat list of
- * {@link MSGBurnerEntry} descriptors — root storage at index 0, its
- * children reachable through `children` indices.
+ * Reconstitutes a valid CFB (Compound Binary File) binary from a flat list of
+ * {@link MSGBurnerEntry} descriptors — root storage at index 0, its children reachable through
+ * `children` indices.
  *
  * @remarks
- * Builds a red-black directory tree, allocates FAT/mini-FAT/DIFAT
- * sectors, then writes the header, directory entries, and stream data
- * into a single binary. Used to extract embedded `.msg` attachments as
- * standalone CFB files.
+ * Builds a red-black directory tree, allocates FAT, mini-FAT, and DIFAT sectors, then writes the
+ * header, the directory entries, and the stream data into a single binary. Extracting an embedded
+ * `.msg` attachment as a standalone CFB file runs through this path.
  *
  * @param entries - Flat entry list starting with Root Entry at index 0
  * @returns Complete CFB binary as Uint8Array
@@ -418,13 +417,13 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 // === Email Shapers
 
 /**
- * Extracts a single EmailMessage from a parsed MSG source.
- * Reads field data and attachments from the given source.
+ * Extracts one {@link EmailMessage} from the field data and attachments of a parsed MSG source; a
+ * corrupt attachment is skipped rather than fatal.
  *
- * Each attachment is read independently: a corrupt attachment throws
- * from `reader.attachment(i)` is caught and that attachment is skipped
- * so the rest of the message still parses. This containment keeps one
- * damaged attachment stream from failing the entire message extraction.
+ * @remarks
+ * Each attachment is read independently: a throw from the source's `attachment` call is caught and
+ * that attachment alone is skipped, so the rest of the message still parses. This containment
+ * keeps one damaged attachment stream from failing the whole message extraction.
  *
  * @param reader - A parsed MSG source exposing field data and attachment access
  * @returns Structured EmailMessage
@@ -484,8 +483,8 @@ export function extractMessageFromMSG(reader: MSGSourceInterface): EmailMessage 
 }
 
 /**
- * Extracts a single EmailMessage from a top-level MIMEPart.
- * Walks the full MIME tree to collect text, HTML, and attachments.
+ * Extracts one {@link EmailMessage} by walking a parsed {@link MIMEPart} tree for its text, HTML,
+ * and attachments.
  *
  * @param part - Root MIMEPart from parseMIMEPart
  * @returns Structured EmailMessage

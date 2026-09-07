@@ -7,26 +7,23 @@ import { isMSGError } from './errors.js'
 // === MSG
 
 /**
- * Creates a new {@link MSGInterface} for the given .eml or .msg input.
+ * Creates an {@link MSGInterface} for raw `.eml` or `.msg` input and returns it inside a
+ * {@link Result}: every parse failure surfaces as a `Failure` carrying the {@link MSGError}
+ * instead of throwing, and an unexpected non-`MSGError` error still propagates.
  *
  * @remarks
- * Unlike `new MSG(...)`, which parses eagerly and throws a typed
- * {@link MSGError} on malformed or unsupported input, `createMSG` surfaces
- * every parse failure as a `Failure<MSGError>` in the returned
- * {@link Result} rather than throwing it. Unexpected non-`MSGError` errors
- * (programmer errors) still propagate by throwing. `createMSG` and
- * `new MSG()` are two entry points, not one wrapping the other: reach for
- * `new MSG()` when a thrown exception is the desired control flow, and
- * `createMSG` when a `Result` is preferred.
+ * This and `new MSG()` are two entry points, not one wrapping the other. `new MSG()` parses
+ * eagerly and throws the typed {@link MSGError} on malformed or unsupported input; reach for it
+ * when a thrown exception is the control flow you want.
  *
  * @param input - Raw .eml/.msg bytes or buffer
  * @param options - Optional parser configuration
  * @returns A `Result` carrying a working {@link MSGInterface} on success,
  * or the {@link MSGError} on failure
  *
- * @example
+ * @example Factories
  * ```ts
- * import { createMSG, isSuccess } from '@src/core'
+ * import { createMSG, isSuccess } from '@orkestrel/msg'
  *
  * const result = createMSG(bytes)
  * if (isSuccess(result)) {

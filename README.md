@@ -1,17 +1,13 @@
 # @orkestrel/msg
 
-A zero-dependency Outlook `.msg` (CFB/OLE2) and `.eml` (RFC 2822/MIME) email
-parser — extracts headers, bodies, recipients, and attachments into typed
-structures. Feed it raw file bytes plus an optional file name or MIME hint; the
-format is detected automatically and the file is parsed into a structured
-`EmailChain` — sender, recipients, subject, date, text/HTML bodies, and
-decoded attachments. `.msg` files are read through a from-scratch CFB (Compound
-File Binary / OLE2) parser that walks the directory tree and extracts MAPI
-properties directly; `.eml` files are read through a from-scratch RFC 2822/MIME
-parser that walks the header block and the (possibly nested) MIME part tree.
-`createMSG` surfaces every parse failure as a `Failure<MSGError>` inside a
-`Result` rather than throwing it; an unexpected non-`MSGError` error still
-propagates by throwing. Part of the `@orkestrel` line.
+> A zero-dependency parser for Outlook `.msg` (CFB/OLE2 compound binary) and `.eml`
+> (RFC 2822 / MIME) email files, projecting either format into one structured `EmailChain`.
+
+Hand `createMSG` the raw file bytes plus an optional file name or MIME hint. It detects the
+format, and the chain it returns carries the sender, recipients, subject, date, text and HTML
+bodies, and decoded attachments. Each reader is written from scratch: the CFB side walks the
+directory tree and extracts MAPI properties directly, and the MIME side walks the header block
+and the nested MIME part tree. Part of the `@orkestrel` line.
 
 ## Install
 
