@@ -287,7 +287,7 @@ describe('fileTimeToUTCString', () => {
 	})
 
 	it('converts a modern FILETIME vector computed with BigInt (no float drift)', () => {
-		// 2024-03-15T12:34:56.000Z, derived in-test via BigInt so it can never drift
+		// 2024-03-15T12:34:56.000Z, derived in-test through BigInt so it can never drift
 		// from the implementation's own arithmetic.
 		const epoch = 116444736000000000n
 		const targetMs = Date.UTC(2024, 2, 15, 12, 34, 56, 0)

@@ -514,7 +514,7 @@ export function resolveEncoding(label: string | undefined): MSGEncoding {
 // === EmailParser Helpers
 
 /**
- * Derives the EmailFormat from a file name and/or MIME type.
+ * Derives the EmailFormat from a file name, a MIME type, or both.
  * Returns undefined when the format cannot be determined.
  *
  * @param name - File name to inspect

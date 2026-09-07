@@ -10,8 +10,8 @@
 // ── Byte fixture builders (generic, environment-agnostic) ──────────────────
 
 /**
- * Encode an ASCII/latin1 string to bytes, one byte per character
- * (`charCodeAt`) — used to build wire-format fixtures without `node:buffer`.
+ * Encodes each character of a string to one byte (`charCodeAt`), for
+ * building ASCII/latin1 wire-format fixtures without `node:buffer`.
  */
 export function asciiBytes(text: string): Uint8Array {
 	const bytes = new Uint8Array(text.length)
@@ -22,7 +22,7 @@ export function asciiBytes(text: string): Uint8Array {
 }
 
 /**
- * Return a COPY of `source` with each `[offset, value]` edit applied —
+ * Returns a copy of `source` with each `[offset, value]` edit applied —
  * `source` itself is never mutated.
  */
 export function patchBytes(
@@ -36,9 +36,9 @@ export function patchBytes(
 }
 
 /**
- * Build a minimal RFC 2822 message from `headers` and `body` — each
+ * Builds a minimal RFC 2822 message from `headers` and `body` — each
  * `"Name: value"` line, a blank line, then the body, all CRLF-terminated —
- * returned as bytes via {@link asciiBytes}.
+ * returned as bytes through {@link asciiBytes}.
  */
 export function buildEml(
 	headers: ReadonlyArray<readonly [string, string]>,
@@ -50,7 +50,7 @@ export function buildEml(
 }
 
 /**
- * Build an eml whose body nests `multipart/mixed` parts `depth` levels
+ * Builds an eml whose body nests `multipart/mixed` parts `depth` levels
  * deep — a unique boundary per level (derived deterministically from the
  * level index, no randomness), CRLF line endings, innermost part is
  * `text/plain`. `depth` of `0` yields a plain (non-multipart) message.
