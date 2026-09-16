@@ -1,4 +1,5 @@
 import type { MSGErrorCode } from './types.js'
+import { isInstance } from '@orkestrel/contract'
 
 // An MSG/EML parsing or burning failure `throw`s an `MSGError`
 // carrying a machine-readable `code`, so a `catch` branches on `error.code`
@@ -53,5 +54,5 @@ export class MSGError extends Error {
  * ```
  */
 export function isMSGError(value: unknown): value is MSGError {
-	return value instanceof MSGError
+	return isInstance(value, MSGError)
 }

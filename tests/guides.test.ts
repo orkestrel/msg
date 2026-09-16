@@ -38,6 +38,7 @@ await new GuideCommand({
 	reader: readInventory,
 	runner: createVitest,
 }).execute(async ({ files, report, root, rows }) => {
+	const { isRecord } = await import('@orkestrel/contract')
 	const { computeSymbolKey, findMissingSymbols } = await import('@orkestrel/guide')
 	const { requireValue } = await import('@orkestrel/test')
 	const {
@@ -65,7 +66,6 @@ await new GuideCommand({
 		isFailure,
 		isMSGError,
 		isMSGFile,
-		isRecord,
 		isSuccess,
 		MSG,
 		MSG_CATEGORY_ROOT,

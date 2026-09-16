@@ -16,10 +16,12 @@ A dual-axis index into this repository's guides — by concept, and by directory
 
 ## Dependency reference
 
-`@orkestrel/msg` is a **core-only** package and declares no `@orkestrel/*`
-runtime dependency, so nothing a consumer installs is mirrored here. What this
-directory does hold is one byte-identical mirror per declared `@orkestrel/*`
-development dependency:
+[`contract.md`](contract.md) is a byte-identical mirror of the guide for `@orkestrel/contract` — this
+package's runtime dependency. It documents **that package's** surface, not anything sourced in this
+repository.
+
+`@orkestrel/msg` is a **core-only** package. What this directory also holds is one byte-identical
+mirror per declared `@orkestrel/*` development dependency:
 
 - [`guide.md`](guide.md) mirrors the guide for `@orkestrel/guide`, which powers
   the guides-parity suite (`tests/guides.test.ts`).

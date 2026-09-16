@@ -1,6 +1,6 @@
 # @orkestrel/msg
 
-> A zero-dependency parser for Outlook `.msg` (CFB/OLE2 compound binary) and `.eml`
+> A parser for Outlook `.msg` (CFB/OLE2 compound binary) and `.eml`
 > (RFC 2822 / MIME) email files, projecting either format into one structured `EmailChain`.
 
 Hand `createMSG` the raw file bytes plus an optional file name or MIME hint. It detects the
@@ -19,7 +19,7 @@ npm install @orkestrel/msg
 
 - Node.js >= 22
 - ESM + CJS (dual-format build)
-- No runtime dependencies
+- Runtime dependency: `@orkestrel/contract`
 
 ## Usage
 

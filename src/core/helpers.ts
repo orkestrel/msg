@@ -1,4 +1,5 @@
-import type { Result, Success, Failure, EmailFormat, MIMEHeader, MSGEncoding } from './types.js'
+import { attempt, type Failure, type Result, type Success } from '@orkestrel/contract'
+import type { EmailFormat, MIMEHeader, MSGEncoding } from './types.js'
 import { MSGError } from './errors.js'
 import {
 	EML_EXTENSIONS,
@@ -686,16 +687,15 @@ export function decodeMIMEWords(text: string): string {
 	return collapsed.replace(
 		/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g,
 		(_match, charset: string, enc: string, encoded: string) => {
-			try {
+			const outcome = attempt(() => {
 				const upper = enc.toUpperCase()
 				const bytes =
 					upper === 'B'
 						? decodeMIMEEncoding(encoded, 'base64')
 						: decodeMIMEEncoding(encoded.replace(/_/g, ' '), 'quoted-printable')
 				return decodeText(bytes, resolveEncoding(charset))
-			} catch {
-				return encoded
-			}
+			})
+			return outcome.success ? outcome.value : encoded
 		},
 	)
 }

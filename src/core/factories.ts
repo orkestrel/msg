@@ -1,5 +1,6 @@
-import type { MSGInput, MSGOptions, MSGInterface, Result } from './types.js'
+import type { Result } from '@orkestrel/contract'
 import type { MSGError } from './errors.js'
+import type { MSGInput, MSGInterface, MSGOptions } from './types.js'
 import { MSG } from './MSG.js'
 import { success, failure } from './helpers.js'
 import { isMSGError } from './errors.js'

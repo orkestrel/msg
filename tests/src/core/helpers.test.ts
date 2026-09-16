@@ -1,5 +1,5 @@
-import type { Result } from '@src/core'
-import { describe, it, expect } from 'vitest'
+import type { Result } from '@orkestrel/contract'
+import { describe, expect, it } from 'vitest'
 import {
 	success,
 	failure,

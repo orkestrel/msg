@@ -3,8 +3,9 @@
  * binary) files into a structured email chain, and — for .msg input —
  * exposes the raw MAPI field tree plus attachment/burn access. Parsing
  * is eager: the constructor either fully parses the input or throws a
- * typed {@link MSGError}. Zero dependencies: a pure-ES MIME parser
- * handles .eml, and native DataView operations handle the CFB format.
+ * typed {@link MSGError}. A pure-ES MIME parser handles .eml, and native
+ * DataView operations handle the CFB format. Runtime type tests come from
+ * `@orkestrel/contract`.
  */
 
 import type {
@@ -21,6 +22,14 @@ import type {
 	MSGBurnerEntry,
 	MSGSourceInterface,
 } from './types.js'
+import {
+	isArrayBuffer,
+	isBoolean,
+	isFiniteNumber,
+	isNumber,
+	isString,
+	isUint8Array,
+} from '@orkestrel/contract'
 import { MSGError } from './errors.js'
 import {
 	MSG_END_OF_CHAIN,
@@ -139,10 +148,10 @@ export class MSG implements MSGInterface {
 		let mime: string | undefined
 		let sniffFormat = true
 
-		if (input instanceof Uint8Array) {
+		if (isUint8Array(input)) {
 			bytes = input
 			sniffFormat = false
-		} else if (input instanceof ArrayBuffer) {
+		} else if (isArrayBuffer(input)) {
 			bytes = new Uint8Array(input)
 			sniffFormat = false
 		} else {
@@ -251,19 +260,15 @@ export class MSG implements MSGInterface {
 		if (attach === undefined) {
 			throw new MSGError('RANGE', `Attachment index ${index} out of range`, { index })
 		}
-		if (attach.innerMSGContent === true && typeof attach.folderId === 'number') {
-			const name = typeof attach.name === 'string' ? attach.name : 'embedded'
+		if (attach.innerMSGContent === true && isNumber(attach.folderId)) {
+			const name = isString(attach.name) ? attach.name : 'embedded'
 			const directory = this.#innerMSGDirectories[attach.folderId]
 			const content =
 				directory === undefined ? new Uint8Array(0) : this.#burnFolder(directory, true, true)
 			return { name: `${name}.msg`, bytes: content }
 		}
 
-		if (
-			typeof attach.dataId !== 'number' ||
-			attach.dataId < 0 ||
-			attach.dataId >= this.#properties.length
-		) {
+		if (!isNumber(attach.dataId) || attach.dataId < 0 || attach.dataId >= this.#properties.length) {
 			throw new MSGError('RANGE', 'Attachment has no valid data reference', { index })
 		}
 
@@ -272,14 +277,13 @@ export class MSG implements MSGInterface {
 			throw new MSGError('RANGE', 'Attachment has no valid data reference', { index })
 		}
 		const content = this.#readEntry(entry)
-		const name =
-			typeof attach.fileName === 'string'
-				? attach.fileName
-				: typeof attach.fileNameShort === 'string'
-					? attach.fileNameShort
-					: typeof attach.name === 'string'
-						? attach.name
-						: 'unknown'
+		const name = isString(attach.fileName)
+			? attach.fileName
+			: isString(attach.fileNameShort)
+				? attach.fileNameShort
+				: isString(attach.name)
+					? attach.name
+					: 'unknown'
 
 		return { name, bytes: content }
 	}
@@ -771,25 +775,25 @@ export class MSG implements MSGInterface {
 	// narrows an unknown-typed mutable field to a string
 	#string(mutable: MSGMutableFieldData, key: string): string | undefined {
 		const value = mutable[key]
-		return typeof value === 'string' ? value : undefined
+		return isString(value) ? value : undefined
 	}
 
 	// narrows an unknown-typed mutable field to a number
 	#number(mutable: MSGMutableFieldData, key: string): number | undefined {
 		const value = mutable[key]
-		return typeof value === 'number' ? value : undefined
+		return isNumber(value) ? value : undefined
 	}
 
 	// narrows an unknown-typed mutable field to a boolean
 	#boolean(mutable: MSGMutableFieldData, key: string): boolean | undefined {
 		const value = mutable[key]
-		return typeof value === 'boolean' ? value : undefined
+		return isBoolean(value) ? value : undefined
 	}
 
 	// narrows an unknown-typed mutable field to binary content
 	#binary(mutable: MSGMutableFieldData, key: string): Uint8Array | undefined {
 		const value = mutable[key]
-		return value instanceof Uint8Array ? value : undefined
+		return isUint8Array(value) ? value : undefined
 	}
 
 	// narrows an unknown-typed mutable field to a recipient role
@@ -1079,7 +1083,7 @@ export class MSG implements MSGInterface {
 			MSG_FIELD_FULL_NAME_MAPPING[fullTag] ?? MSG_FIELD_NAME_MAPPING[fieldClass]
 
 		const classValue = parseInt(fieldClass, 16)
-		if (!Number.isNaN(classValue) && classValue >= 0x8000) {
+		if (isFiniteNumber(classValue) && classValue >= 0x8000) {
 			const keyed = this.#privatePidToKeyed[classValue]
 			if (keyed !== undefined) {
 				if (keyed.useName) {
@@ -1125,7 +1129,7 @@ export class MSG implements MSGInterface {
 		}
 
 		// Resolve recipientRole from integer to string
-		if (key === 'recipientRole' && typeof value === 'number') {
+		if (key === 'recipientRole' && isNumber(value)) {
 			if (value === MSG_MAPI_RECIPIENT_TO) value = 'to' satisfies MSGRecipientRole
 			else if (value === MSG_MAPI_RECIPIENT_CC) value = 'cc' satisfies MSGRecipientRole
 			else if (value === MSG_MAPI_RECIPIENT_BCC) value = 'bcc' satisfies MSGRecipientRole

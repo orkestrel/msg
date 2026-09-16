@@ -1,6 +1,6 @@
 # MSG
 
-> A zero-dependency parser for Outlook `.msg` (CFB/OLE2 compound binary) and `.eml`
+> A parser for Outlook `.msg` (CFB/OLE2 compound binary) and `.eml`
 > (RFC 2822 / MIME) email files, projecting either format into one structured `EmailChain`.
 
 A pure-ES encoding layer (Base64, UTF-8, Latin-1, Windows-1252, quoted-printable, RFC 2047

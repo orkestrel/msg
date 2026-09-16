@@ -1,15 +1,5 @@
 import type { EmailAttachment, EmailChain, EmailFormat, EmailMessage } from './types.js'
-
-/**
- * Narrows an unknown value to a plain record: a total from-unknown guard, true for a non-null,
- * non-array object.
- *
- * @param value - Value to check
- * @returns True if value is a non-null, non-array object; false otherwise
- */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
+import { arrayOf, isDate, isRecord, isString, isUint8Array } from '@orkestrel/contract'
 
 /**
  * Narrows an unknown value to a valid {@link EmailFormat}: a total from-unknown guard, true for
@@ -31,11 +21,7 @@ export function isEmailFormat(value: unknown): value is EmailFormat {
  */
 export function isEmailAttachment(value: unknown): value is EmailAttachment {
 	if (!isRecord(value)) return false
-	return (
-		typeof value.name === 'string' &&
-		typeof value.mimeType === 'string' &&
-		value.bytes instanceof Uint8Array
-	)
+	return isString(value.name) && isString(value.mimeType) && isUint8Array(value.bytes)
 }
 
 /**
@@ -47,21 +33,14 @@ export function isEmailAttachment(value: unknown): value is EmailAttachment {
  */
 export function isEmailMessage(value: unknown): value is EmailMessage {
 	if (!isRecord(value)) return false
-	if (typeof value.from !== 'string') return false
-	if (!Array.isArray(value.to) || !value.to.every((address) => typeof address === 'string'))
-		return false
-	if (!Array.isArray(value.cc) || !value.cc.every((address) => typeof address === 'string'))
-		return false
-	if (typeof value.subject !== 'string') return false
-	if (value.date !== undefined && !(value.date instanceof Date)) return false
-	if (typeof value.text !== 'string') return false
-	if (typeof value.html !== 'string') return false
-	if (
-		!Array.isArray(value.attachments) ||
-		!value.attachments.every((attachment) => isEmailAttachment(attachment))
-	) {
-		return false
-	}
+	if (!isString(value.from)) return false
+	if (!arrayOf(isString)(value.to)) return false
+	if (!arrayOf(isString)(value.cc)) return false
+	if (!isString(value.subject)) return false
+	if (value.date !== undefined && !isDate(value.date)) return false
+	if (!isString(value.text)) return false
+	if (!isString(value.html)) return false
+	if (!arrayOf(isEmailAttachment)(value.attachments)) return false
 	return true
 }
 
@@ -75,7 +54,6 @@ export function isEmailMessage(value: unknown): value is EmailMessage {
 export function isEmailChain(value: unknown): value is EmailChain {
 	if (!isRecord(value)) return false
 	if (value.format !== 'eml' && value.format !== 'msg') return false
-	if (!Array.isArray(value.messages) || !value.messages.every((message) => isEmailMessage(message)))
-		return false
+	if (!arrayOf(isEmailMessage)(value.messages)) return false
 	return true
 }

@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest'
-import { isEmailAttachment, isEmailChain, isEmailFormat, isEmailMessage, isRecord } from '@src/core'
-import type { EmailAttachment, EmailMessage, EmailChain } from '@src/core'
+import type { EmailAttachment, EmailChain, EmailMessage } from '@src/core'
+import { describe, expect, it } from 'vitest'
+import { isEmailAttachment, isEmailChain, isEmailFormat, isEmailMessage } from '@src/core'
 
 // validators.ts holds the structural type guards used at the boundary of the
-// parsed EmailChain/EmailMessage/EmailAttachment shapes, plus the record and
-// format guards they are built on. Each guard must be total: true on a valid
-// shape, false on every other input — null, undefined, primitives, and
+// parsed EmailChain/EmailMessage/EmailAttachment shapes, plus the format guard
+// they are built on. Each guard must be total: true on a valid shape, false on
+// every other input — null, undefined, primitives, class instances, and
 // partial/malformed objects — never throwing.
 
 const validAttachment: EmailAttachment = {
@@ -30,28 +30,11 @@ const validChain: EmailChain = {
 	messages: [validMessage],
 }
 
-describe('isRecord', () => {
-	it('accepts a plain object', () => {
-		expect(isRecord({})).toBe(true)
-		expect(isRecord({ a: 1 })).toBe(true)
-	})
-
-	it('rejects null', () => {
-		expect(isRecord(null)).toBe(false)
-	})
-
-	it('rejects an array', () => {
-		expect(isRecord([1, 2, 3])).toBe(false)
-		expect(isRecord([])).toBe(false)
-	})
-
-	it('rejects primitives', () => {
-		expect(isRecord('text')).toBe(false)
-		expect(isRecord(42)).toBe(false)
-		expect(isRecord(true)).toBe(false)
-		expect(isRecord(undefined)).toBe(false)
-	})
-})
+class MatchingAttachment {
+	name = 'file.txt'
+	mimeType = 'text/plain'
+	bytes = new Uint8Array([1, 2, 3, 4])
+}
 
 describe('isEmailFormat', () => {
 	it('accepts eml and msg', () => {
@@ -70,6 +53,14 @@ describe('isEmailFormat', () => {
 describe('isEmailAttachment', () => {
 	it('accepts a valid EmailAttachment', () => {
 		expect(isEmailAttachment(validAttachment)).toBe(true)
+	})
+
+	it('accepts a null-prototype record whose fields match', () => {
+		expect(isEmailAttachment(Object.assign(Object.create(null), validAttachment))).toBe(true)
+	})
+
+	it('rejects a class instance even when fields match', () => {
+		expect(isEmailAttachment(new MatchingAttachment())).toBe(false)
 	})
 
 	it('rejects null/undefined/primitives', () => {
@@ -103,6 +94,12 @@ describe('isEmailMessage', () => {
 		expect(isEmailMessage(undefined)).toBe(false)
 		expect(isEmailMessage('text')).toBe(false)
 		expect(isEmailMessage(42)).toBe(false)
+	})
+
+	it('rejects a sparse to array', () => {
+		const to: string[] = ['bob@example.com']
+		to[2] = 'carol@example.com'
+		expect(isEmailMessage({ ...validMessage, to })).toBe(false)
 	})
 
 	it('rejects a partial object missing required fields', () => {

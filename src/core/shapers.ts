@@ -6,6 +6,7 @@ import type {
 	MSGBurnerLiteEntry,
 	MSGSourceInterface,
 } from './types.js'
+import { isNonNegativeInteger } from '@orkestrel/contract'
 import {
 	FALLBACK_ATTACHMENT_NAME,
 	MSG_BURNER_DIFAT_HEADER_SLOTS,
@@ -77,7 +78,7 @@ export function burnCFB(entries: readonly MSGBurnerEntry[]): Uint8Array {
 		if (children === undefined || children.length === 0) continue
 
 		for (const childIndex of children) {
-			if (!Number.isInteger(childIndex) || childIndex < 0 || childIndex >= liteEntries.length) {
+			if (!isNonNegativeInteger(childIndex) || childIndex >= liteEntries.length) {
 				throw new MSGError('BURN', 'Child entry index is out of range', { childIndex })
 			}
 			const owner = owners[childIndex]

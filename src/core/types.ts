@@ -1,26 +1,3 @@
-// === Result Pattern
-
-/**
- * Represents a successful `Result`, carrying the value the operation produced.
- */
-export interface Success<T> {
-	readonly success: true
-	readonly value: T
-}
-
-/**
- * Represents a failed `Result`, carrying the error the operation produced.
- */
-export interface Failure<E> {
-	readonly success: false
-	readonly error: E
-}
-
-/**
- * Represents a discriminated union for operations that can succeed or fail safely.
- */
-export type Result<T, E = Error> = Success<T> | Failure<E>
-
 // === Encoding
 
 /**
