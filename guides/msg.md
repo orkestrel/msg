@@ -303,20 +303,15 @@ The from-unknown guards from [`validators.ts`](../src/core/validators.ts). Each 
 
 In a guard table a `Shape` cell holds the type the guard narrows to.
 
-| Guard               | Kind     | Shape                     | Summary                                                                                                                                                           |
-| ------------------- | -------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `isEmailFormat`     | function | `EmailFormat`             | Narrows an unknown value to a valid `EmailFormat`: a total from-unknown guard, true for `'eml'` and `'msg'`.                                                      |
-| `isEmailAttachment` | function | `EmailAttachment`         | Narrows an unknown value to an `EmailAttachment`: a total from-unknown guard over `name`, `mimeType`, and `bytes`.                                                |
-| `isEmailMessage`    | function | `EmailMessage`            | Narrows an unknown value to an `EmailMessage`: a total from-unknown guard over every member, validating `attachments` recursively through `isEmailAttachment`.    |
-| `isEmailChain`      | function | `EmailChain`              | Narrows an unknown value to an `EmailChain`: a total from-unknown guard over `format` and `messages`, validating `messages` recursively through `isEmailMessage`. |
+| Guard               | Kind     | Shape             | Summary                                                                                                                                                           |
+| ------------------- | -------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `isEmailFormat`     | function | `EmailFormat`     | Narrows an unknown value to a valid `EmailFormat`: a total from-unknown guard, true for `'eml'` and `'msg'`.                                                      |
+| `isEmailAttachment` | function | `EmailAttachment` | Narrows an unknown value to an `EmailAttachment`: a total from-unknown guard over `name`, `mimeType`, and `bytes`.                                                |
+| `isEmailMessage`    | function | `EmailMessage`    | Narrows an unknown value to an `EmailMessage`: a total from-unknown guard over every member, validating `attachments` recursively through `isEmailAttachment`.    |
+| `isEmailChain`      | function | `EmailChain`      | Narrows an unknown value to an `EmailChain`: a total from-unknown guard over `format` and `messages`, validating `messages` recursively through `isEmailMessage`. |
 
 ```ts
-import {
-	isEmailAttachment,
-	isEmailChain,
-	isEmailFormat,
-	isEmailMessage,
-} from '@orkestrel/msg'
+import { isEmailAttachment, isEmailChain, isEmailFormat, isEmailMessage } from '@orkestrel/msg'
 
 isEmailFormat('eml') // true
 isEmailAttachment({ name: 'a.txt', mimeType: 'text/plain', bytes: new Uint8Array() }) // true
