@@ -13,7 +13,8 @@ import {
 	MSG_PROP_NAME_SIZE_OFFSET,
 	MSG_SECTOR_SIZE,
 } from '@src/core'
-import { requireValue } from '@orkestrel/test'
+import { attempt } from '@orkestrel/contract'
+import { captureError, requireValue } from '@orkestrel/test'
 import { patchBytes, buildEml } from '../../setup.js'
 import { readFixture } from '../../setupServer.js'
 
@@ -114,13 +115,7 @@ describe('MSG — corrupted FAT sector count', () => {
 			[MSG_HEADER_BAT_COUNT_OFFSET + 3, (huge >>> 24) & 0xff],
 		])
 
-		let thrown: unknown
-		try {
-			const instance = new MSG(toArrayBuffer(patched))
-			thrown = instance
-		} catch (error) {
-			thrown = error
-		}
+		const thrown = captureError(() => new MSG(toArrayBuffer(patched)))
 		expect(isMSGError(thrown)).toBe(true)
 	})
 })
@@ -151,13 +146,7 @@ describe('MSG — a FAT sector chain that points back at itself', () => {
 			[entryOffset + 3, (propertyStart >>> 24) & 0xff],
 		])
 
-		let thrown: unknown
-		try {
-			const instance = new MSG(toArrayBuffer(patched))
-			thrown = instance
-		} catch (error) {
-			thrown = error
-		}
+		const thrown = captureError(() => new MSG(toArrayBuffer(patched)))
 		expect(isMSGError(thrown)).toBe(true)
 		expect(isMSGError(thrown) && (thrown.code === 'CYCLE' || thrown.code === 'MALFORMED')).toBe(
 			true,
@@ -183,13 +172,9 @@ describe('MSG — a directory entry name-size field set to an adversarial value'
 			[nameSizeOffset + 1, 0xff],
 		])
 
-		let thrown: unknown
-		let instance: MSG | undefined
-		try {
-			instance = new MSG(toArrayBuffer(patched))
-		} catch (error) {
-			thrown = error
-		}
+		const result = attempt(() => new MSG(toArrayBuffer(patched)))
+		const instance = result.success ? result.value : undefined
+		const thrown = result.success ? undefined : result.error
 		// Clamped to the entry's own 31-unit capacity, the read stays in
 		// bounds — either parse succeeds outright, or any failure surfaces
 		// as a typed MSGError, never a raw RangeError.
@@ -226,7 +211,7 @@ describe('MSG — attachmentFiles.msg exposes attachments', () => {
 		const attachments = msg.fields?.attachments ?? []
 		expect(attachments.length).toBeGreaterThan(0)
 
-		for (let index = 0; index < attachments.length; index++) {
+		for (const index of attachments.keys()) {
 			const result = msg.attachment(index)
 			expect(typeof result.name).toBe('string')
 			expect(result.name.length).toBeGreaterThan(0)
@@ -269,12 +254,7 @@ describe('MSG — attachment() range errors', () => {
 	it('throws an MSGError with code RANGE for a negative index', () => {
 		const msg = new MSG(toArrayBuffer(readFixture('test.msg')))
 
-		let thrown: unknown
-		try {
-			msg.attachment(-1)
-		} catch (error) {
-			thrown = error
-		}
+		const thrown = captureError(() => msg.attachment(-1))
 		expect(isMSGError(thrown)).toBe(true)
 		expect(isMSGError(thrown) && thrown.code).toBe('RANGE')
 	})
@@ -282,12 +262,7 @@ describe('MSG — attachment() range errors', () => {
 	it('throws an MSGError with code RANGE for an index past the end', () => {
 		const msg = new MSG(toArrayBuffer(readFixture('test.msg')))
 
-		let thrown: unknown
-		try {
-			msg.attachment(9999)
-		} catch (error) {
-			thrown = error
-		}
+		const thrown = captureError(() => msg.attachment(9999))
 		expect(isMSGError(thrown)).toBe(true)
 		expect(isMSGError(thrown) && thrown.code).toBe('RANGE')
 	})
@@ -327,7 +302,7 @@ describe('MSG — burn() round-trip', () => {
 		const reparsed = new MSG(toArrayBuffer(burned))
 
 		const originalCount = original.fields?.attachments?.length ?? 0
-		for (let i = 0; i < originalCount; i++) {
+		for (const i of Array.from({ length: originalCount }, (_, index) => index)) {
 			const originalAttachment = original.attachment(i)
 			const reparsedAttachment = reparsed.attachment(i)
 			expect(reparsedAttachment.name).toBe(originalAttachment.name)
@@ -405,26 +380,14 @@ describe('MSG — non-CFB / malformed input throws typed MSGError', () => {
 	it('throws MSGError UNSUPPORTED for bytes lacking the CFB magic header', () => {
 		const bytes = new TextEncoder().encode('hello world')
 
-		let thrown: unknown
-		try {
-			const instance = new MSG(toArrayBuffer(bytes))
-			thrown = instance
-		} catch (error) {
-			thrown = error
-		}
+		const thrown = captureError(() => new MSG(toArrayBuffer(bytes)))
 		expect(isMSGError(thrown)).toBe(true)
 		if (!isMSGError(thrown)) throw new Error('unreachable')
 		expect(thrown.code).toBe('UNSUPPORTED')
 	})
 
 	it('throws MSGError UNSUPPORTED for an empty buffer', () => {
-		let thrown: unknown
-		try {
-			const instance = new MSG(new ArrayBuffer(0))
-			thrown = instance
-		} catch (error) {
-			thrown = error
-		}
+		const thrown = captureError(() => new MSG(new ArrayBuffer(0)))
 		expect(isMSGError(thrown)).toBe(true)
 		if (!isMSGError(thrown)) throw new Error('unreachable')
 		expect(thrown.code).toBe('UNSUPPORTED')
@@ -433,13 +396,7 @@ describe('MSG — non-CFB / malformed input throws typed MSGError', () => {
 	it('throws a structural MSGError (not a raw RangeError) for a fixture truncated to 700 bytes', () => {
 		const bytes = readFixture('test.msg').slice(0, 700)
 
-		let thrown: unknown
-		try {
-			const instance = new MSG(toArrayBuffer(bytes))
-			thrown = instance
-		} catch (error) {
-			thrown = error
-		}
+		const thrown = captureError(() => new MSG(toArrayBuffer(bytes)))
 		expect(isMSGError(thrown)).toBe(true)
 	})
 })

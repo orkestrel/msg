@@ -11,6 +11,7 @@
 import type {
 	MSGInterface,
 	MSGInput,
+	EmailInput,
 	MSGOptions,
 	EmailChain,
 	MSGFieldData,
@@ -62,12 +63,12 @@ import {
 	MSG_PREFIX_RECIPIENT,
 	MSG_PREFIX_DOCUMENT,
 	MSG_PREFIX_NAMEID,
-	MSG_FIELD_NAME_MAPPING,
-	MSG_FIELD_FULL_NAME_MAPPING,
-	MSG_FIELD_TYPE_MAPPING,
+	MSG_FIELD_NAMES,
+	MSG_FIELD_FULL_NAMES,
+	MSG_FIELD_TYPES,
 	MSG_FIELD_CLASS_ATTACHMENT_DATA,
 	MSG_FIELD_DIR_TYPE_INNER_MSG,
-	MSG_PIDLID_MAPPING,
+	MSG_PIDLIDS,
 	MSG_MAPI_RECIPIENT_TO,
 	MSG_MAPI_RECIPIENT_CC,
 	MSG_MAPI_RECIPIENT_BCC,
@@ -143,22 +144,16 @@ export class MSG implements MSGInterface {
 	constructor(input: MSGInput, options?: MSGOptions) {
 		this.#options = { ...(options ?? {}) }
 
-		let bytes: Uint8Array
-		let name: string | undefined
-		let mime: string | undefined
-		let sniffFormat = true
-
-		if (isUint8Array(input)) {
-			bytes = input
-			sniffFormat = false
-		} else if (isArrayBuffer(input)) {
-			bytes = new Uint8Array(input)
-			sniffFormat = false
-		} else {
-			bytes = input.bytes
-			name = input.name
-			mime = input.mime
-		}
+		const raw = isUint8Array(input) || isArrayBuffer(input)
+		const inputData: EmailInput = isUint8Array(input)
+			? { bytes: input }
+			: isArrayBuffer(input)
+				? { bytes: new Uint8Array(input) }
+				: input
+		const bytes = inputData.bytes
+		const name = inputData.name
+		const mime = inputData.mime
+		const sniffFormat = !raw
 
 		this.#view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 		this.#byteLength = bytes.byteLength
@@ -410,13 +405,9 @@ export class MSG implements MSGInterface {
 
 	#readBat(): number[] {
 		const count = this.#batCountInHeader()
-		const result: number[] = new Array(count)
-		let offset = MSG_HEADER_BAT_START_OFFSET
-		for (let i = 0; i < count; i++) {
-			result[i] = this.#view.getInt32(offset, true)
-			offset += 4
-		}
-		return result
+		return Array.from({ length: count }, (_, index) =>
+			this.#view.getInt32(MSG_HEADER_BAT_START_OFFSET + index * 4, true),
+		)
 	}
 
 	#blockOffset(sector: number): number {
@@ -454,44 +445,45 @@ export class MSG implements MSGInterface {
 	// === SBAT (Small Block Allocation Table)
 
 	#readSbat(): number[] {
-		const result: number[] = []
 		const visited = new Set<number>()
-		let startIndex = this.#sbatStart
-		for (
-			let i = 0;
-			i < this.#sbatCount && startIndex !== 0 && startIndex !== MSG_END_OF_CHAIN;
-			i++
-		) {
+		const steps: Array<{ readonly sector: number; readonly next: number }> = []
+		while (steps.length < this.#sbatCount) {
+			const startIndex = steps.at(-1)?.next ?? this.#sbatStart
+			if (startIndex === 0 || startIndex === MSG_END_OF_CHAIN) break
 			this.#trackSector(visited, startIndex, 'SBAT', this.#totalSectors, 'total sector count')
-			result.push(startIndex)
-			startIndex = this.#nextBlock(startIndex)
+			steps.push({ sector: startIndex, next: this.#nextBlock(startIndex) })
 		}
-		return result
+		return steps.map((step) => step.sector)
 	}
 
 	// === XBAT (Extended BAT / DIFAT)
 
 	#readXbat(): void {
 		const headerBatCount = this.#batCountInHeader()
-		let remaining = this.#batCount - headerBatCount
-		let nextSector = this.#xbatStart
+		const steps: Array<{ readonly next: number; readonly sectors: readonly number[] }> = []
 		const visited = new Set<number>()
 
-		for (let i = 0; i < this.#xbatCount; i++) {
+		while (steps.length < this.#xbatCount) {
+			const i = steps.length
+			const nextSector = steps.at(-1)?.next ?? this.#xbatStart
+			const remaining = Math.max(0, this.#batCount - headerBatCount - i * this.#xBlockLength)
 			this.#trackSector(visited, nextSector, 'XBAT', this.#totalSectors, 'total sector count')
 			const blockOffset = this.#blockOffset(nextSector)
 			this.#assertBounds(blockOffset, this.#bigBlockSize)
 			const toProcess = Math.min(remaining, this.#xBlockLength)
+			const sectors: number[] = []
 
-			for (let j = 0; j < toProcess; j++) {
+			for (const j of Array.from({ length: Math.max(0, toProcess) }, (_, index) => index)) {
 				const sector = this.#view.getInt32(blockOffset + j * 4, true)
 				if (sector === MSG_UNUSED_BLOCK || sector === MSG_END_OF_CHAIN) break
-				this.#bat.push(sector)
+				sectors.push(sector)
 			}
-			remaining -= toProcess
-
-			nextSector = this.#view.getInt32(blockOffset + this.#xBlockLength * 4, true)
-			if (nextSector === MSG_UNUSED_BLOCK || nextSector === MSG_END_OF_CHAIN) break
+			const next = this.#view.getInt32(blockOffset + this.#xBlockLength * 4, true)
+			steps.push({ next, sectors })
+			if (next === MSG_UNUSED_BLOCK || next === MSG_END_OF_CHAIN) break
+		}
+		for (const step of steps) {
+			for (const sector of step.sectors) this.#bat.push(sector)
 		}
 	}
 
@@ -521,11 +513,15 @@ export class MSG implements MSGInterface {
 	}
 
 	#readProperties(propertyStart: number): MSGDirectoryEntry[] {
-		const props: MSGDirectoryEntry[] = []
+		const steps: Array<{
+			readonly next: number
+			readonly entries: readonly MSGDirectoryEntry[]
+		}> = []
 		const visited = new Set<number>()
-		let currentSector = propertyStart
 
-		while (currentSector !== MSG_END_OF_CHAIN) {
+		while (true) {
+			const currentSector = steps.at(-1)?.next ?? propertyStart
+			if (currentSector === MSG_END_OF_CHAIN) break
 			this.#trackSector(
 				visited,
 				currentSector,
@@ -534,9 +530,11 @@ export class MSG implements MSGInterface {
 				'total sector count',
 			)
 			const entryCount = this.#bigBlockSize / MSG_DIRECTORY_ENTRY_SIZE
-			let offset = this.#blockOffset(currentSector)
+			const start = this.#blockOffset(currentSector)
+			const props: MSGDirectoryEntry[] = []
 
-			for (let i = 0; i < entryCount; i++) {
+			for (const i of Array.from({ length: entryCount }, (_, index) => index)) {
+				const offset = start + i * MSG_DIRECTORY_ENTRY_SIZE
 				if (offset + MSG_DIRECTORY_ENTRY_SIZE > this.#byteLength) break
 				const entryCategory = this.#view.getUint8(offset + MSG_PROP_CATEGORY_OFFSET)
 
@@ -557,11 +555,11 @@ export class MSG implements MSGInterface {
 						sizeBlock: 0,
 					})
 				}
-				offset += MSG_DIRECTORY_ENTRY_SIZE
 			}
-			currentSector = this.#nextBlock(currentSector)
+			steps.push({ next: this.#nextBlock(currentSector), entries: props })
 		}
 
+		const props = steps.flatMap((step) => step.entries)
 		if (props.length > 0) {
 			this.#buildHierarchy(props, 0, new Set<number>(), 0)
 		}
@@ -649,15 +647,15 @@ export class MSG implements MSGInterface {
 		const rootProp = this.#properties[0]
 		if (rootProp === undefined) return []
 
-		const table: number[] = []
+		const steps: Array<{ readonly sector: number; readonly next: number }> = []
 		const visited = new Set<number>()
-		let nextBlock = rootProp.startBlock
-		while (nextBlock !== MSG_END_OF_CHAIN) {
+		while (true) {
+			const nextBlock = steps.at(-1)?.next ?? rootProp.startBlock
+			if (nextBlock === MSG_END_OF_CHAIN) break
 			this.#trackSector(visited, nextBlock, 'Big block', this.#totalSectors, 'total sector count')
-			table.push(nextBlock)
-			nextBlock = this.#nextBlock(nextBlock)
+			steps.push({ sector: nextBlock, next: this.#nextBlock(nextBlock) })
 		}
-		return table
+		return steps.map((step) => step.sector)
 	}
 
 	// === Data Reading
@@ -682,24 +680,24 @@ export class MSG implements MSGInterface {
 
 	#readSmallChainData(entry: MSGDirectoryEntry, chain: number[]): Uint8Array {
 		const result = new Uint8Array(entry.sizeBlock)
-		let idx = 0
-		for (const block of chain) {
+		for (const [index, block] of chain.entries()) {
+			const idx = Math.min(index * MSG_MINI_SECTOR_SIZE, result.length)
 			const readLen = Math.min(result.length - idx, MSG_MINI_SECTOR_SIZE)
 			this.#readSmallBlockData(block, readLen, result, idx)
-			idx += readLen
 		}
 		return result
 	}
 
 	#smallBlockChain(entry: MSGDirectoryEntry): number[] {
-		const chain: number[] = []
+		const steps: Array<{ readonly sector: number; readonly next: number }> = []
 		const visited = new Set<number>()
 		// the mini-FAT lives in this.#sbat's big sectors, each holding
 		// bigBlockLength int32 entries - that flat entry count, not the
 		// file's big-sector count, bounds a legitimate mini-stream chain
 		const capacity = this.#sbat.length * this.#bigBlockLength
-		let next = entry.startBlock
-		while (next !== MSG_END_OF_CHAIN) {
+		while (true) {
+			const next = steps.at(-1)?.next ?? entry.startBlock
+			if (next === MSG_END_OF_CHAIN) break
 			if (next < 0 || next >= capacity) {
 				throw new MSGError('MALFORMED', `Small block index ${next} exceeds mini-FAT capacity`, {
 					sector: next,
@@ -707,10 +705,9 @@ export class MSG implements MSGInterface {
 				})
 			}
 			this.#trackSector(visited, next, 'Small block', capacity, 'mini-FAT capacity')
-			chain.push(next)
-			next = this.#nextBlockSmall(next)
+			steps.push({ sector: next, next: this.#nextBlockSmall(next) })
 		}
-		return chain
+		return steps.map((step) => step.sector)
 	}
 
 	#readEntry(entry: MSGDirectoryEntry): Uint8Array {
@@ -735,23 +732,27 @@ export class MSG implements MSGInterface {
 		}
 
 		// Large block reading
-		let nextBlock = entry.startBlock
-		let remaining = entry.sizeBlock
-		let position = 0
+		const steps: Array<{
+			readonly next: number
+			readonly position: number
+			readonly bytes: Uint8Array
+		}> = []
 		const result = new Uint8Array(entry.sizeBlock)
 		const visited = new Set<number>()
 
-		while (remaining >= 1) {
+		while (true) {
+			const nextBlock = steps.at(-1)?.next ?? entry.startBlock
+			const position = steps.length * this.#bigBlockSize
+			const remaining = entry.sizeBlock - position
+			if (remaining < 1) break
 			this.#trackSector(visited, nextBlock, 'Entry block', this.#totalSectors, 'total sector count')
 			const start = this.#blockOffset(nextBlock)
 			const partSize = Math.min(remaining, this.#bigBlockSize)
 			this.#assertBounds(start, partSize)
 			const src = new Uint8Array(this.#view.buffer, this.#view.byteOffset + start, partSize)
-			result.set(src, position)
-			position += partSize
-			remaining -= partSize
-			nextBlock = this.#nextBlock(nextBlock)
+			steps.push({ bytes: src.slice(), position, next: this.#nextBlock(nextBlock) })
 		}
+		for (const step of steps) result.set(step.bytes, step.position)
 		return result
 	}
 
@@ -948,8 +949,7 @@ export class MSG implements MSGInterface {
 		if (children === undefined) return
 
 		// Process sub-folders first
-		for (let i = 0; i < children.length; i++) {
-			const childIndex = children[i]
+		for (const childIndex of children.values()) {
 			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined) continue
@@ -960,8 +960,7 @@ export class MSG implements MSGInterface {
 		}
 
 		// Process document streams
-		for (let i = 0; i < children.length; i++) {
-			const childIndex = children[i]
+		for (const childIndex of children.values()) {
 			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined) continue
@@ -1053,16 +1052,14 @@ export class MSG implements MSGInterface {
 			bytes.byteOffset + headerSize,
 			bytes.length - headerSize,
 		)
-		let offset = 0
+		const offsets = Array.from({ length: Math.floor(propView.byteLength / 16) }, (_, i) => i * 16)
 
-		while (offset + 16 <= propView.byteLength) {
+		for (const offset of offsets) {
 			const propertyTag = propView.getUint32(offset, true)
 			if (propertyTag === 0) break
 			// skip flags (4 bytes)
-			offset += 8
 
-			const valueBytes = new Uint8Array(bytes.buffer, bytes.byteOffset + headerSize + offset, 8)
-			offset += 8
+			const valueBytes = new Uint8Array(bytes.buffer, bytes.byteOffset + headerSize + offset + 8, 8)
 
 			const fieldClass = toHexLower((propertyTag >>> 16) & 0xffff, 4)
 			const fieldType = toHexLower(propertyTag & 0xffff, 4)
@@ -1079,69 +1076,60 @@ export class MSG implements MSGInterface {
 		insideProps: boolean,
 	): void {
 		const fullTag = `${fieldClass}${fieldType}`
-		let key: string | undefined =
-			MSG_FIELD_FULL_NAME_MAPPING[fullTag] ?? MSG_FIELD_NAME_MAPPING[fieldClass]
-
+		const defaultKey = MSG_FIELD_FULL_NAMES[fullTag] ?? MSG_FIELD_NAMES[fieldClass]
 		const classValue = parseInt(fieldClass, 16)
-		if (isFiniteNumber(classValue) && classValue >= 0x8000) {
-			const keyed = this.#privatePidToKeyed[classValue]
-			if (keyed !== undefined) {
-				if (keyed.useName) {
-					key = keyed.name
-				} else if (keyed.propertySet !== undefined && keyed.propertyLid !== undefined) {
-					const resolved = this.#resolvePidLid(keyed.propertySet, keyed.propertyLid)
-					if (resolved !== undefined) {
-						key = resolved
-					}
-				}
-			}
-		}
-
-		const decodeAs = MSG_FIELD_TYPE_MAPPING[fieldType]
-		let value: unknown = bytes
-
-		if (decodeAs === 'string') {
-			value = truncateAtNull(decodeText(bytes, this.#options.encoding))
-			if (insideProps) key = undefined
-		} else if (decodeAs === 'unicode') {
-			const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
-			value = truncateAtNull(readUTF16String(view, 0, Math.floor(bytes.length / 2)))
-			if (insideProps) key = undefined
-		} else if (decodeAs === 'binary') {
-			if (insideProps) key = undefined
-		} else if (decodeAs === 'integer') {
-			if (bytes.length >= 4) {
-				const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
-				value = dv.getUint32(0, true)
-			}
-		} else if (decodeAs === 'boolean') {
-			if (bytes.length >= 2) {
-				const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
-				value = dv.getUint16(0, true) !== 0
-			}
-		} else if (decodeAs === 'time') {
-			if (bytes.length >= 8) {
-				const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
-				const lo = dv.getUint32(0, true)
-				const hi = dv.getUint32(4, true)
-				value = fileTimeToUTCString(lo, hi)
-			}
-		}
-
-		// Resolve recipientRole from integer to string
-		if (key === 'recipientRole' && isNumber(value)) {
-			if (value === MSG_MAPI_RECIPIENT_TO) value = 'to' satisfies MSGRecipientRole
-			else if (value === MSG_MAPI_RECIPIENT_CC) value = 'cc' satisfies MSGRecipientRole
-			else if (value === MSG_MAPI_RECIPIENT_BCC) value = 'bcc' satisfies MSGRecipientRole
-		}
+		const keyed =
+			isFiniteNumber(classValue) && classValue >= 0x8000
+				? this.#privatePidToKeyed[classValue]
+				: undefined
+		const resolved = keyed?.useName
+			? keyed.name
+			: keyed?.propertySet !== undefined && keyed.propertyLid !== undefined
+				? (this.#resolvePidLid(keyed.propertySet, keyed.propertyLid) ?? defaultKey)
+				: defaultKey
+		const decodeAs = MSG_FIELD_TYPES[fieldType]
+		const decoded = this.#decodeValue(decodeAs, bytes)
+		const key =
+			insideProps && (decodeAs === 'string' || decodeAs === 'unicode' || decodeAs === 'binary')
+				? undefined
+				: resolved
+		const value =
+			key === 'recipientRole' && isNumber(decoded)
+				? decoded === MSG_MAPI_RECIPIENT_TO
+					? ('to' satisfies MSGRecipientRole)
+					: decoded === MSG_MAPI_RECIPIENT_CC
+						? ('cc' satisfies MSGRecipientRole)
+						: decoded === MSG_MAPI_RECIPIENT_BCC
+							? ('bcc' satisfies MSGRecipientRole)
+							: decoded
+				: decoded
 
 		if (key !== undefined) Object.assign(fields, { [key]: value })
 	}
 
+	#decodeValue(decodeAs: string | undefined, bytes: Uint8Array): unknown {
+		if (decodeAs === 'string') return truncateAtNull(decodeText(bytes, this.#options.encoding))
+		if (decodeAs === 'unicode') {
+			const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
+			return truncateAtNull(readUTF16String(view, 0, Math.floor(bytes.length / 2)))
+		}
+		if (decodeAs === 'integer' && bytes.length >= 4) {
+			return new DataView(bytes.buffer, bytes.byteOffset, bytes.length).getUint32(0, true)
+		}
+		if (decodeAs === 'boolean' && bytes.length >= 2) {
+			return new DataView(bytes.buffer, bytes.byteOffset, bytes.length).getUint16(0, true) !== 0
+		}
+		if (decodeAs === 'time' && bytes.length >= 8) {
+			const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
+			return fileTimeToUTCString(view.getUint32(0, true), view.getUint32(4, true))
+		}
+		return bytes
+	}
+
 	#resolvePidLid(propertySet: string, propertyLid: number): string | undefined {
-		const setMapping = MSG_PIDLID_MAPPING[propertySet]
-		if (setMapping === undefined) return undefined
-		return setMapping[propertyLid]
+		const propertyNames = MSG_PIDLIDS[propertySet]
+		if (propertyNames === undefined) return undefined
+		return propertyNames[propertyLid]
 	}
 
 	// === Named Property ID Resolution (__nameid_version1.0)
@@ -1150,12 +1138,9 @@ export class MSG implements MSGInterface {
 		const children = dirEntry.children
 		if (children === undefined) return
 
-		let guidTable: Uint8Array | undefined
-		let entryTable: Uint8Array | undefined
-		let stringTable: Uint8Array | undefined
+		const tables: Array<readonly [string, Uint8Array]> = []
 
-		for (let i = 0; i < children.length; i++) {
-			const childIndex = children[i]
+		for (const childIndex of children.values()) {
 			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined || child.category !== MSG_CATEGORY_DOCUMENT) continue
@@ -1166,14 +1151,18 @@ export class MSG implements MSGInterface {
 			const fieldType = value.substring(4, 8)
 
 			if (fieldClass === '0002' && fieldType === '0102') {
-				guidTable = this.#readEntry(child)
+				tables.push(['guid', this.#readEntry(child)])
 			} else if (fieldClass === '0003' && fieldType === '0102') {
-				entryTable = this.#readEntry(child)
+				tables.push(['entry', this.#readEntry(child)])
 			} else if (fieldClass === '0004' && fieldType === '0102') {
-				stringTable = this.#readEntry(child)
+				tables.push(['string', this.#readEntry(child)])
 			}
 		}
 
+		const lookup = new Map(tables)
+		const guidTable = lookup.get('guid')
+		const entryTable = lookup.get('entry')
+		const stringTable = lookup.get('string')
 		if (guidTable === undefined || entryTable === undefined || stringTable === undefined) return
 
 		this.#parseEntryStream(entryTable, guidTable, stringTable)
@@ -1183,7 +1172,7 @@ export class MSG implements MSGInterface {
 		const view = new DataView(entryTable.buffer, entryTable.byteOffset, entryTable.length)
 		const entryCount = Math.floor(entryTable.length / 8)
 
-		for (let i = 0; i < entryCount; i++) {
+		for (const i of Array.from({ length: entryCount }, (_, index) => index)) {
 			const offset = i * 8
 			const nameIdOrStringOffset = view.getUint32(offset, true)
 			const indexAndKind = view.getUint16(offset + 4, true)
@@ -1207,17 +1196,15 @@ export class MSG implements MSGInterface {
 					}
 				}
 			} else {
-				let propertySet: string | undefined
-				if (guidIndex === 1) {
-					propertySet = '00020328-0000-0000-c000-000000000046'
-				} else if (guidIndex === 2) {
-					propertySet = '00020329-0000-0000-c000-000000000046'
-				} else {
-					const guidOffset = 16 * (guidIndex - 3)
-					if (guidOffset >= 0 && guidOffset + 16 <= guidTable.length) {
-						propertySet = readMicrosoftUUID(guidTable, guidOffset)
-					}
-				}
+				const guidOffset = 16 * (guidIndex - 3)
+				const propertySet =
+					guidIndex === 1
+						? '00020328-0000-0000-c000-000000000046'
+						: guidIndex === 2
+							? '00020329-0000-0000-c000-000000000046'
+							: guidOffset >= 0 && guidOffset + 16 <= guidTable.length
+								? readMicrosoftUUID(guidTable, guidOffset)
+								: undefined
 
 				if (propertySet !== undefined) {
 					this.#privatePidToKeyed[0x8000 | propertyIndex] = {
@@ -1266,22 +1253,16 @@ export class MSG implements MSGInterface {
 		if (parent.children === undefined) return
 
 		// Register document streams
-		for (let i = 0; i < children.length; i++) {
-			const childIndex = children[i]
+		for (const childIndex of children.values()) {
 			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined || child.category !== MSG_CATEGORY_DOCUMENT) continue
 
-			let provider = this.#readEntry.bind(this, child)
-			let length = child.sizeBlock
-
-			// Embedded MSG storages use the sub-message property stream layout.
-			// When promoting one to a standalone Root Entry, the top-level
-			// __properties_version1.0 stream needs 8 bytes inserted at offset 24.
-			if (padPropertyStream && child.name === '__properties_version1.0') {
-				provider = this.#readPaddedEntry.bind(this, child)
-				length = length + 8
-			}
+			const original = this.#readEntry.bind(this, child)
+			const size = child.sizeBlock
+			const padded = padPropertyStream && child.name === '__properties_version1.0'
+			const provider = padded ? this.#readPaddedEntry.bind(this, child) : original
+			const length = padded ? size + 8 : size
 
 			this.#appendBurnerEntry(entries, parentIndex, {
 				name: child.name,
@@ -1296,8 +1277,7 @@ export class MSG implements MSGInterface {
 		if (includeRootNameId) {
 			const rootProp = this.#properties[0]
 			if (rootProp !== undefined && rootProp.children !== undefined) {
-				for (let i = 0; i < rootProp.children.length; i++) {
-					const rootChildIndex = rootProp.children[i]
+				for (const rootChildIndex of rootProp.children.values()) {
 					if (rootChildIndex === undefined) continue
 					const rootChild = this.#properties[rootChildIndex]
 					if (
@@ -1318,8 +1298,7 @@ export class MSG implements MSGInterface {
 		}
 
 		// Register sub-directories
-		for (let i = 0; i < children.length; i++) {
-			const childIndex = children[i]
+		for (const childIndex of children.values()) {
 			if (childIndex === undefined) continue
 			const child = this.#properties[childIndex]
 			if (child === undefined || child.category !== MSG_CATEGORY_DIRECTORY) continue

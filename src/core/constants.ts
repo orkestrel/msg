@@ -190,7 +190,7 @@ export const MSG_PREFIX_NAMEID = '__nameid_version1.0'
 /**
  * Maps a MAPI property tag's hex to its short field name, for example `subject`.
  */
-export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = Object.freeze({
+export const MSG_FIELD_NAMES: Readonly<Record<string, string>> = Object.freeze({
 	// email specific
 	'001a': 'messageClass',
 	'0037': 'subject',
@@ -259,7 +259,7 @@ export const MSG_FIELD_NAME_MAPPING: Readonly<Record<string, string>> = Object.f
 /**
  * Maps a compound tag's full 8-character hex to its fully-qualified field name.
  */
-export const MSG_FIELD_FULL_NAME_MAPPING: Readonly<Record<string, string>> = Object.freeze({
+export const MSG_FIELD_FULL_NAMES: Readonly<Record<string, string>> = Object.freeze({
 	'1013001f': 'bodyHTML',
 	'10130102': 'html',
 })
@@ -267,7 +267,7 @@ export const MSG_FIELD_FULL_NAME_MAPPING: Readonly<Record<string, string>> = Obj
 /**
  * Maps a MAPI property type tag's hex to its `MSGFieldType` decode tag.
  */
-export const MSG_FIELD_TYPE_MAPPING: Readonly<Record<string, MSGFieldType>> = Object.freeze({
+export const MSG_FIELD_TYPES: Readonly<Record<string, MSGFieldType>> = Object.freeze({
 	'001e': 'string',
 	'001f': 'unicode',
 	'0040': 'time',
@@ -308,7 +308,7 @@ export const MSG_MAPI_RECIPIENT_BCC = 3
  * Covers the well-known MAPI named property sets, keying each set's property long IDs to the
  * corresponding `MSGFieldData` field names.
  */
-export const MSG_PIDLID_MAPPING: Readonly<Record<string, Readonly<Record<number, string>>>> =
+export const MSG_PIDLIDS: Readonly<Record<string, Readonly<Record<number, string>>>> =
 	Object.freeze({
 		// PSETID_Common
 		'00062008-0000-0000-c000-000000000046': Object.freeze({

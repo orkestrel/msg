@@ -6,9 +6,10 @@
 // the published surface moves.
 import type { SpawnSyncReturns } from 'node:child_process'
 import type { TestContext } from 'vitest'
-import { isArray, isObject, isString } from '@orkestrel/contract'
+import { attempt, isArray, isObject, isString } from '@orkestrel/contract'
 import { spawnSync } from 'node:child_process'
 import {
+	cpSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -21,7 +22,7 @@ import {
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -31,7 +32,10 @@ const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 // compiler majors this toolchain supports, and its in-process API is not. It is
 // resolved from the workspace under proof, so a consumer of the packed artifact is
 // checked by the same compiler that workspace's own `check` script runs.
-const TSC = createRequire(join(ROOT, 'package.json')).resolve('typescript/bin/tsc')
+const TSC = join(
+	dirname(createRequire(join(ROOT, 'package.json')).resolve('typescript/package.json')),
+	'bin/tsc',
+)
 // Windows needs a shell to launch a `.cmd`: Node refuses one directly since the
 // batch-argument hardening, and `spawnSync` returns `EINVAL` with a null status
 // rather than an exit code a caller can read. Every following argument is a literal or
@@ -193,10 +197,8 @@ function isNames(value: unknown): value is readonly string[] {
 function isPackageTarget(target: string): boolean {
 	if (!target.startsWith('./')) return false
 	for (const segment of target.slice(2).split(/[\\/]/u)) {
-		let decoded = segment
-		try {
-			decoded = decodeURIComponent(segment)
-		} catch {}
+		const result = attempt(() => decodeURIComponent(segment))
+		const decoded = result.success ? result.value : segment
 		const normalized = decoded.toLowerCase()
 		if (normalized === '.' || normalized === '..' || normalized === 'node_modules') return false
 	}
@@ -284,11 +286,16 @@ function matchesFile(path: string): boolean {
 // the containing condition or fallback list unresolved, so the walk continues.
 function targetToDeclaration(target: string, installed: string): string | undefined {
 	if (!isPackageTarget(target)) return undefined
-	let declaration = target
-	if (target.endsWith('.cjs')) declaration = `${target.slice(0, -4)}.d.cts`
-	else if (target.endsWith('.mjs')) declaration = `${target.slice(0, -4)}.d.mts`
-	else if (target.endsWith('.js')) declaration = `${target.slice(0, -3)}.d.ts`
-	else if (!isDeclaration(target)) return undefined
+	const declaration = target.endsWith('.cjs')
+		? `${target.slice(0, -4)}.d.cts`
+		: target.endsWith('.mjs')
+			? `${target.slice(0, -4)}.d.mts`
+			: target.endsWith('.js')
+				? `${target.slice(0, -3)}.d.ts`
+				: isDeclaration(target)
+					? target
+					: undefined
+	if (declaration === undefined) return undefined
 	return matchesFile(join(installed, declaration)) ? declaration : undefined
 }
 
@@ -320,22 +327,22 @@ function resolveDeclaration(
 // physical nested manifest starts a scope even when it omits `type` or cannot be
 // parsed. A directory at that spelling is not a manifest, so the walk continues.
 function readPackageType(installed: string, target: string): unknown {
-	let directory = dirname(join(installed, target))
-	while (true) {
-		const path = join(directory, 'package.json')
-		if (matchesFile(path)) {
-			try {
-				const manifest = readJson(path)
-				return isRecord(manifest) ? manifest.type : undefined
-			} catch {
-				return undefined
-			}
+	return readDirectoryType(installed, dirname(join(installed, target)))
+}
+
+function readDirectoryType(installed: string, directory: string): unknown {
+	const path = join(directory, 'package.json')
+	if (matchesFile(path)) {
+		try {
+			const manifest = readJson(path)
+			return isRecord(manifest) ? manifest.type : undefined
+		} catch {
+			return undefined
 		}
-		if (directory === installed) return undefined
-		const parent = dirname(directory)
-		if (parent === directory) return undefined
-		directory = parent
 	}
+	if (directory === installed) return undefined
+	const parent = dirname(directory)
+	return parent === directory ? undefined : readDirectoryType(installed, parent)
 }
 
 function resolvesBrowser(entry: unknown): boolean {
@@ -503,25 +510,25 @@ function checkProject(stage: Stage, project: string): readonly string[] {
 	if (refused.length > 0) {
 		throw new Error(`The consumer compiler wrote ${refused} to its error stream`)
 	}
-	const reported: string[] = []
-	for (const line of `${result.stdout ?? ''}`.split(/\r\n|\n/u)) {
-		if (line.trim().length === 0) continue
-		const last = reported.at(-1)
-		// An elaborated diagnostic prints its detail on indented lines under its own
-		// first line, so each of those joins the diagnostic it elaborates.
-		if (/^\s/u.test(line) && last !== undefined) {
-			reported[reported.length - 1] = `${last} ${line.trim()}`
-			continue
-		}
-		const located = DIAGNOSTIC_PATTERN.exec(line)?.[1]
-		if (located === undefined) {
-			throw new Error(`The consumer compiler reported ${line}, which names no location`)
-		}
-		if (resolve(stage.consumer, located) === project) {
-			throw new Error(`The scratch project is itself at fault: ${line}`)
-		}
-		reported.push(line)
-	}
+	const groups = `${result.stdout ?? ''}`
+		.split(/\r\n|\n/u)
+		.reduce<ReadonlyArray<readonly string[]>>((rows, line) => {
+			if (line.trim().length === 0) return rows
+			const last = rows.at(-1)
+			if (/^\s/u.test(line) && last !== undefined) {
+				return [...rows.slice(0, -1), [...last, line.trim()]]
+			}
+			const located = DIAGNOSTIC_PATTERN.exec(line)?.[1]
+			if (located === undefined) {
+				throw new Error(`The consumer compiler reported ${line}, which names no location`)
+			}
+			if (resolve(stage.consumer, located) === project) {
+				throw new Error(`The scratch project is itself at fault: ${line}`)
+			}
+			return [...rows, [line]]
+		}, [])
+	const reported = groups.map((group) => group.join(' '))
+
 	if (reported.length === 0 && result.status !== 0) {
 		throw new Error(`The consumer compiler refused the project: ${readOutput(result)}`)
 	}
@@ -558,13 +565,12 @@ const surfaced: Record<keyof typeof published, true> = declared
 // One consumer module importing every installed entry, written where its own
 // resolution finds the installed package.
 function writeConsumerProbe(stage: Stage, path: string, specifiers: readonly string[]): void {
-	const names: string[] = []
-	const bindings: string[] = []
-	for (const [index, specifier] of specifiers.entries()) {
-		const binding = `entry${String(index)}`
-		names.push(binding)
-		bindings.push(`import * as ${binding} from ${JSON.stringify(specifier)}`)
-	}
+	const rows = specifiers.map((specifier, index) => ({
+		name: `entry${String(index)}`,
+		binding: `import * as entry${String(index)} from ${JSON.stringify(specifier)}`,
+	}))
+	const names = rows.map((row) => row.name)
+	const bindings = rows.map((row) => row.binding)
 	const source = `${bindings.join('\n')}\nexport const surface = [${names.join(', ')}]\n`
 	writeFile(join(stage.consumer, path), source)
 }
@@ -612,29 +618,18 @@ function buildStage(): Stage {
 	if (!isRecord(manifest) || !isRecord(manifest.exports)) {
 		throw new Error('The installed manifest publishes no exports map')
 	}
-	const entries: Entry[] = []
-	const targets: string[] = []
-	const subpaths: string[] = []
-	const undeclared: string[] = []
-	const excluded: string[] = []
-	for (const [subpath, entry] of Object.entries(manifest.exports)) {
+	const publications = Object.entries(manifest.exports).map(([subpath, entry]) => {
 		const files = collectTargets(entry)
-		targets.push(...files)
-		subpaths.push(subpath)
 		const declaration = readDeclaration(entry, installed)
-		// A subpath resolving no declaration is partitioned rather than dropped. It is a
-		// defect when a runtime loads one of its targets for names, because a consumer
-		// importing it compiles against nothing under `node16`. It is an excluded
-		// publication otherwise: the `"./package.json"` manifest pointer and a stylesheet
-		// are published for a reader rather than an importer.
 		if (
 			declaration.module === undefined &&
 			declaration.commonjs === undefined &&
 			declaration.browser === undefined
 		) {
-			if (files.some(isModule)) undeclared.push(subpath)
-			else excluded.push(subpath)
-			continue
+			if (files.some(isModule)) {
+				return { subpath, files, undeclared: true, excluded: false, entries: [] }
+			}
+			return { subpath, files, undeclared: false, excluded: true, entries: [] }
 		}
 		const imported = resolveTarget(entry, RUNTIME_CONDITIONS.module)
 		const requiredTarget = resolveTarget(entry, RUNTIME_CONDITIONS.commonjs)
@@ -642,7 +637,7 @@ function buildStage(): Stage {
 		const browser = resolvesBrowser(entry)
 		const required = requiredTarget !== undefined && !(browser && requiredTarget === browserTarget)
 		const commonjs = required && resolvesCommonJS(entry, installed)
-		entries.push({
+		const published: Entry = {
 			subpath,
 			specifier: subpath === '.' ? name : `${name}${subpath.slice(1)}`,
 			mapping: entry,
@@ -655,8 +650,19 @@ function buildStage(): Stage {
 			module: imported !== undefined && !(browser && imported === browserTarget),
 			commonjs,
 			required,
-		})
-	}
+		}
+		return { subpath, files, undeclared: false, excluded: false, entries: [published] }
+	})
+	const entries = publications.flatMap((publication) => publication.entries)
+	const targets = publications.flatMap((publication) => publication.files)
+	const subpaths = publications.map((publication) => publication.subpath)
+	const undeclared = publications
+		.filter((publication) => publication.undeclared)
+		.map((publication) => publication.subpath)
+	const excluded = publications
+		.filter((publication) => publication.excluded)
+		.map((publication) => publication.subpath)
+
 	return { consumer, installed, archives, entries, subpaths, undeclared, excluded, targets }
 }
 
@@ -916,3 +922,55 @@ for (const entry of STAGE?.entries ?? []) {
 		)
 	})
 }
+
+it('recognizes branded MSG errors across installed module copies [requires the registry]', (context) => {
+	const stage = requireStage(context)
+	const name = readManifestName(join(stage.installed, 'package.json'))
+	const copy = join(dirname(stage.installed), 'msg-copy')
+	cpSync(stage.installed, copy, { recursive: true })
+	const driver = join(stage.consumer, 'errors.mjs')
+	writeFile(
+		driver,
+		`import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
+const original = await import(process.argv[2])
+const copied = await import(process.argv[3])
+const require = createRequire(import.meta.url)
+const commonjs = require(process.argv[2])
+const copiedCommonjs = require(process.argv[4])
+const modules = [original, copied, commonjs, copiedCommonjs]
+const brand = Symbol.for('@orkestrel/msg.MSGError')
+class Derived extends original.MSGError {}
+const subclass = new Derived('MALFORMED', 'subclass')
+subclass.name = 'Derived'
+for (const owner of modules) {
+	const error = new owner.MSGError('MALFORMED', 'broken', { offset: 8 })
+	const descriptor = Object.getOwnPropertyDescriptor(error, brand)
+	assert.equal(descriptor?.value, error)
+	assert.equal(descriptor?.enumerable, false)
+	assert.equal(descriptor?.writable, false)
+	const plain = {}
+	Object.defineProperty(plain, brand, { value: plain })
+	const lookalike = Object.assign(new Error('broken'), { code: 'MALFORMED', context: { offset: 8 } })
+	for (const reader of modules) {
+		assert.equal(reader.isMSGError(error), true)
+		assert.equal(reader.isMSGError(subclass), true)
+		assert.equal(reader.isMSGError(lookalike), false)
+		assert.equal(reader.isMSGError(new Proxy(error, {})), false)
+		assert.equal(reader.isMSGError(plain), false)
+	}
+}
+`,
+	)
+	const result = runNode(
+		[
+			driver,
+			name,
+			pathToFileURL(join(copy, 'dist/src/core/index.js')).href,
+			join(copy, 'dist/src/core/index.cjs'),
+		],
+		stage.consumer,
+	)
+	if (result.status !== 0) throw new Error(readOutput(result))
+	expect(result.status).toBe(0)
+})

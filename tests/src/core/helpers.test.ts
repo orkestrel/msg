@@ -112,12 +112,12 @@ describe('encodeUTF8 / decodeUTF8', () => {
 	})
 
 	it('decodeUTF8 never throws on invalid bytes — yields U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xff]))).toBe('�')
+		expect(decodeUTF8(new Uint8Array([0xff]))).toBe('\uFFFD')
 	})
 
 	it('decodeUTF8 never throws on a truncated multibyte sequence', () => {
 		// 0xe2 announces a 3-byte sequence but only one continuation byte follows.
-		expect(decodeUTF8(new Uint8Array([0xe2, 0x82]))).toBe('��')
+		expect(decodeUTF8(new Uint8Array([0xe2, 0x82]))).toBe('\uFFFD\uFFFD')
 	})
 
 	it('encodeUTF8 encodes a lone (unpaired) surrogate as U+FFFD', () => {
@@ -125,20 +125,20 @@ describe('encodeUTF8 / decodeUTF8', () => {
 	})
 
 	it('decodeUTF8 rejects an overlong 2-byte encoding of NUL as U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xc0, 0x80]))).toBe('�')
+		expect(decodeUTF8(new Uint8Array([0xc0, 0x80]))).toBe('\uFFFD')
 	})
 
 	it('decodeUTF8 rejects an overlong 2-byte encoding of "<" (never decodes to it)', () => {
 		expect(decodeUTF8(new Uint8Array([0xc0, 0xbc]))).not.toContain('<')
-		expect(decodeUTF8(new Uint8Array([0xc0, 0xbc]))).toBe('�')
+		expect(decodeUTF8(new Uint8Array([0xc0, 0xbc]))).toBe('\uFFFD')
 	})
 
 	it('decodeUTF8 rejects a surrogate code point as U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xed, 0xa0, 0x80]))).toBe('�')
+		expect(decodeUTF8(new Uint8Array([0xed, 0xa0, 0x80]))).toBe('\uFFFD')
 	})
 
 	it('decodeUTF8 rejects an out-of-range code point (> U+10FFFF) as U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xf7, 0xbf, 0xbf, 0xbf]))).toBe('�')
+		expect(decodeUTF8(new Uint8Array([0xf7, 0xbf, 0xbf, 0xbf]))).toBe('\uFFFD')
 	})
 
 	it('decodeUTF8 still round-trips a valid mixed ASCII/multibyte string', () => {

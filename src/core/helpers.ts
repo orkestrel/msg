@@ -101,12 +101,10 @@ export function readUTF16String(view: DataView, offset: number, charCount: numbe
 			byteLength: view.byteLength,
 		})
 	}
-	let result = ''
-	for (let i = 0; i < charCount; i++) {
-		const code = view.getUint16(offset + i * 2, true)
-		result += String.fromCharCode(code)
-	}
-	return result
+	const characters = Array.from({ length: Math.ceil(charCount) }, (_, index) =>
+		String.fromCharCode(view.getUint16(offset + index * 2, true)),
+	)
+	return characters.join('')
 }
 
 /**
@@ -163,13 +161,12 @@ export function fileTimeToUTCString(low: number, high: number): string {
  */
 export function toHexLower(value: number, length: number): string {
 	const hex = '0123456789abcdef'
-	let result = ''
-	let remaining = value >>> 0
-	for (let i = 0; i < length; i++) {
-		result = hex.charAt(remaining & 15) + result
-		remaining = remaining >>> 4
-	}
-	return result
+	const digits = Array.from({ length: Math.max(0, Math.ceil(length)) }, (_, index) => {
+		if (index >= 8) return '0'
+		const shifted = value >>> (index * 4)
+		return hex.charAt(shifted & 15)
+	})
+	return digits.reverse().join('')
 }
 
 /**
@@ -184,18 +181,18 @@ export function toHexLower(value: number, length: number): string {
  */
 export function readMicrosoftUUID(bytes: Uint8Array, offset: number): string {
 	const order = [3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15]
-	let result = ''
-	for (const [index, relative] of order.entries()) {
-		if (index === 4 || index === 6 || index === 8 || index === 10) result += '-'
-		const byte = bytes[offset + relative]
-		if (byte === undefined) {
-			throw new MSGError('RANGE', 'UUID byte offset is out of range', {
-				offset: offset + relative,
-			})
-		}
-		result += toHexLower(byte, 2)
-	}
-	return result
+	return order
+		.map((relative, index) => {
+			const separator = index === 4 || index === 6 || index === 8 || index === 10 ? '-' : ''
+			const byte = bytes[offset + relative]
+			if (byte === undefined) {
+				throw new MSGError('RANGE', 'UUID byte offset is out of range', {
+					offset: offset + relative,
+				})
+			}
+			return separator + toHexLower(byte, 2)
+		})
+		.join('')
 }
 
 /**
@@ -206,10 +203,7 @@ export function readMicrosoftUUID(bytes: Uint8Array, offset: number): string {
  */
 export function isMSGFile(view: DataView): boolean {
 	if (view.byteLength < MSG_FILE_HEADER.length) return false
-	for (let i = 0; i < MSG_FILE_HEADER.length; i++) {
-		if (view.getUint8(i) !== MSG_FILE_HEADER[i]) return false
-	}
-	return true
+	return MSG_FILE_HEADER.every((byte, index) => view.getUint8(index) === byte)
 }
 
 // === MSGBurner Helpers
@@ -275,24 +269,26 @@ export function compareCFBName(a: string, b: string): number {
 export function decodeBase64(text: string): Uint8Array {
 	const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 	const cleaned = text.replace(/[ \t\n\r\f\v]+/g, '').replace(/=+$/, '')
-	const bytes: number[] = []
-	let buffer = 0
-	let bits = 0
-
+	const steps: Array<{
+		readonly buffer: number
+		readonly bits: number
+		readonly byte?: number
+	}> = []
 	for (const char of cleaned) {
 		const index = alphabet.indexOf(char)
 		if (index === -1) {
 			throw new MSGError('MALFORMED', `Invalid Base64 character: ${char}`, { char })
 		}
-		buffer = (buffer << 6) | index
-		bits += 6
-		if (bits >= 8) {
-			bits -= 8
-			bytes.push((buffer >> bits) & 0xff)
-		}
+		const previous = steps.at(-1)
+		const buffer = ((previous?.buffer ?? 0) << 6) | index
+		const bits = (previous?.bits ?? 0) + 6
+		steps.push(
+			bits >= 8
+				? { buffer, bits: bits - 8, byte: (buffer >> (bits - 8)) & 0xff }
+				: { buffer, bits },
+		)
 	}
-
-	return new Uint8Array(bytes)
+	return new Uint8Array(steps.flatMap((step) => (step.byte === undefined ? [] : [step.byte])))
 }
 
 /**
@@ -308,40 +304,23 @@ export function decodeBase64(text: string): Uint8Array {
  * ```
  */
 export function encodeUTF8(text: string): Uint8Array {
-	const bytes: number[] = []
-
-	for (let i = 0; i < text.length; i++) {
-		let code = text.charCodeAt(i)
-
-		if (code >= 0xd800 && code <= 0xdbff) {
-			const next = text.charCodeAt(i + 1)
-			if (next >= 0xdc00 && next <= 0xdfff) {
-				code = (code - 0xd800) * 0x400 + (next - 0xdc00) + 0x10000
-				i++
-			} else {
-				code = 0xfffd
+	return new Uint8Array(
+		Array.from(text).flatMap((character) => {
+			const point = character.codePointAt(0) ?? 0
+			const code = point >= 0xd800 && point <= 0xdfff ? 0xfffd : point
+			if (code < 0x80) return [code]
+			if (code < 0x800) return [0xc0 | (code >> 6), 0x80 | (code & 0x3f)]
+			if (code < 0x10000) {
+				return [0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f)]
 			}
-		} else if (code >= 0xdc00 && code <= 0xdfff) {
-			code = 0xfffd
-		}
-
-		if (code < 0x80) {
-			bytes.push(code)
-		} else if (code < 0x800) {
-			bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f))
-		} else if (code < 0x10000) {
-			bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
-		} else {
-			bytes.push(
+			return [
 				0xf0 | (code >> 18),
 				0x80 | ((code >> 12) & 0x3f),
 				0x80 | ((code >> 6) & 0x3f),
 				0x80 | (code & 0x3f),
-			)
-		}
-	}
-
-	return new Uint8Array(bytes)
+			]
+		}),
+	)
 }
 
 /**
@@ -359,89 +338,48 @@ export function encodeUTF8(text: string): Uint8Array {
  * @example
  * ```ts
  * decodeUTF8(new Uint8Array([65])) // 'A'
- * decodeUTF8(new Uint8Array([0xff])) // '�'
+ * decodeUTF8(new Uint8Array([0xff])) // '\uFFFD'
  * ```
  */
 export function decodeUTF8(bytes: Uint8Array): string {
-	let result = ''
-	let i = 0
-
-	while (i < bytes.length) {
-		const byte0 = bytes[i]
-		if (byte0 === undefined) break
-
-		if (byte0 < 0x80) {
-			result += String.fromCharCode(byte0)
-			i++
+	const steps: Array<{ readonly text: string; readonly next: number }> = []
+	while (true) {
+		const index = steps.at(-1)?.next ?? 0
+		if (index >= bytes.length) break
+		const byte = bytes[index]
+		if (byte === undefined) break
+		if (byte < 0x80) {
+			steps.push({ text: String.fromCharCode(byte), next: index + 1 })
 			continue
 		}
-
-		let length = 0
-		let codePoint = 0
-		if ((byte0 & 0xe0) === 0xc0) {
-			length = 1
-			codePoint = byte0 & 0x1f
-		} else if ((byte0 & 0xf0) === 0xe0) {
-			length = 2
-			codePoint = byte0 & 0x0f
-		} else if ((byte0 & 0xf8) === 0xf0) {
-			length = 3
-			codePoint = byte0 & 0x07
-		} else {
-			result += '�'
-			i++
+		const length =
+			(byte & 0xe0) === 0xc0 ? 1 : (byte & 0xf0) === 0xe0 ? 2 : (byte & 0xf8) === 0xf0 ? 3 : 0
+		const mask = length === 1 ? 0x1f : length === 2 ? 0x0f : 0x07
+		const point = byte & mask
+		if (length === 0 || index + length >= bytes.length) {
+			steps.push({ text: '\uFFFD', next: index + 1 })
 			continue
 		}
-
-		if (i + length >= bytes.length) {
-			result += '�'
-			i++
+		const offsets = Array.from({ length }, (_, offset) => offset + 1)
+		const value = offsets.reduce<number | undefined>((previous, offset) => {
+			if (previous === undefined) return undefined
+			const next = bytes[index + offset]
+			if (next === undefined || (next & 0xc0) !== 0x80) return undefined
+			return (previous << 6) | (next & 0x3f)
+		}, point)
+		if (value === undefined) {
+			steps.push({ text: '\uFFFD', next: index + 1 })
 			continue
 		}
-
-		let valid = true
-		let value = codePoint
-		for (let j = 1; j <= length; j++) {
-			const next = bytes[i + j]
-			if (next === undefined) {
-				valid = false
-				break
-			}
-			if ((next & 0xc0) !== 0x80) {
-				valid = false
-				break
-			}
-			value = (value << 6) | (next & 0x3f)
-		}
-
-		if (!valid) {
-			result += '�'
-			i++
-			continue
-		}
-
 		const minimum = UTF8_SEQUENCE_MINIMUM[length]
-		const isOverlong = minimum !== undefined && value < minimum
-		const isSurrogate = value >= 0xd800 && value <= 0xdfff
-		const isOutOfRange = value > 0x10ffff
-
-		if (isOverlong || isSurrogate || isOutOfRange) {
-			result += '�'
-			i += length + 1
-			continue
-		}
-
-		i += length + 1
-
-		if (value >= 0x10000) {
-			value -= 0x10000
-			result += String.fromCharCode(0xd800 + (value >> 10), 0xdc00 + (value & 0x3ff))
-		} else {
-			result += String.fromCharCode(value)
-		}
+		const invalid =
+			(minimum !== undefined && value < minimum) ||
+			(value >= 0xd800 && value <= 0xdfff) ||
+			value > 0x10ffff
+		const text = invalid ? '\uFFFD' : String.fromCodePoint(value)
+		steps.push({ text, next: index + length + 1 })
 	}
-
-	return result
+	return steps.map((step) => step.text).join('')
 }
 
 /**
@@ -456,11 +394,10 @@ export function decodeUTF8(bytes: Uint8Array): string {
  * ```
  */
 export function decodeLatin1(bytes: Uint8Array): string {
-	let result = ''
-	for (const byte of bytes) {
-		result += String.fromCharCode(byte)
-	}
-	return result
+	return Iterator.from(bytes)
+		.map((byte) => String.fromCharCode(byte))
+		.toArray()
+		.join('')
 }
 
 /**
@@ -476,19 +413,19 @@ export function decodeLatin1(bytes: Uint8Array): string {
  * ```
  */
 export function decodeWindows1252(bytes: Uint8Array): string {
-	let result = ''
-	for (const byte of bytes) {
-		if (byte >= 0x80 && byte <= 0x9f) {
-			const codePoint = WINDOWS_1252_HIGH[byte - 0x80]
-			if (codePoint === undefined) {
-				throw new MSGError('MALFORMED', 'Windows-1252 mapping is incomplete', { byte })
+	return Iterator.from(bytes)
+		.map((byte) => {
+			if (byte >= 0x80 && byte <= 0x9f) {
+				const codePoint = WINDOWS_1252_HIGH[byte - 0x80]
+				if (codePoint === undefined) {
+					throw new MSGError('MALFORMED', 'Windows-1252 mapping is incomplete', { byte })
+				}
+				return String.fromCodePoint(codePoint)
 			}
-			result += String.fromCodePoint(codePoint)
-		} else {
-			result += String.fromCharCode(byte)
-		}
-	}
-	return result
+			return String.fromCharCode(byte)
+		})
+		.toArray()
+		.join('')
 }
 
 /**
@@ -564,46 +501,40 @@ export function detectFormat(
  * @returns Map of parsed header objects
  */
 export function parseMIMEHeaders(text: string): ReadonlyMap<string, MIMEHeader> {
-	const raw: Array<{ name: string; value: string }> = []
-
-	for (const line of text.split(/\r\n|\n/)) {
-		if (line === '') continue
-		if ((line.startsWith(' ') || line.startsWith('\t')) && raw.length > 0) {
-			const last = raw[raw.length - 1]
-			if (last !== undefined) {
-				raw[raw.length - 1] = { name: last.name, value: last.value + ' ' + line.trim() }
-			}
-			continue
+	const initial: ReadonlyArray<{ readonly name: string; readonly parts: readonly string[] }> = []
+	const raw = text.split(/\r\n|\n/).reduce((headers, line) => {
+		if (line === '') return headers
+		const last = headers.at(-1)
+		if ((line.startsWith(' ') || line.startsWith('\t')) && last !== undefined) {
+			const folded = { name: last.name, parts: [...last.parts, line.trim()] }
+			return [...headers.slice(0, -1), folded]
 		}
 		const colon = line.indexOf(':')
-		if (colon === -1) continue
-		raw.push({
+		if (colon === -1) return headers
+		const header = {
 			name: line.slice(0, colon).trim().toLowerCase(),
-			value: line.slice(colon + 1).trim(),
-		})
-	}
-
-	const map = new Map<string, MIMEHeader>()
-	for (const { name, value } of raw) {
-		if (!map.has(name)) {
-			const segments = value.split(';')
-			const val = (segments[0] ?? '').trim()
-			const params = new Map<string, string>()
-
-			for (let i = 1; i < segments.length; i++) {
-				const segment = (segments[i] ?? '').trim()
-				const eq = segment.indexOf('=')
-				if (eq === -1) continue
-				const k = segment.slice(0, eq).trim().toLowerCase()
-				let v = segment.slice(eq + 1).trim()
-				if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1)
-				params.set(k, v)
-			}
-
-			map.set(name, { value: val, params })
+			parts: [line.slice(colon + 1).trim()],
 		}
-	}
-	return map
+		return [...headers, header]
+	}, initial)
+	const unique = raw.filter(
+		(header, index) => raw.findIndex((candidate) => candidate.name === header.name) === index,
+	)
+	const entries = unique.map(({ name, parts }) => {
+		const segments = parts.join(' ').split(';')
+		const params = segments.slice(1).flatMap((part) => {
+			const segment = part.trim()
+			const equal = segment.indexOf('=')
+			if (equal === -1) return []
+			const key = segment.slice(0, equal).trim().toLowerCase()
+			const value = segment.slice(equal + 1).trim()
+			const quoted = value.startsWith('"') && value.endsWith('"')
+			const unquoted = quoted ? value.slice(1, -1) : value
+			return [[key, unquoted] as const]
+		})
+		return [name, { value: (segments[0] ?? '').trim(), params: new Map(params) }] as const
+	})
+	return new Map(entries)
 }
 
 /**
@@ -618,32 +549,15 @@ export function parseMIMEHeaders(text: string): ReadonlyMap<string, MIMEHeader> 
  */
 export function decodeMIMEEncoding(body: string, encoding: string): Uint8Array {
 	const enc = encoding.toLowerCase()
-
-	if (enc === 'base64') {
-		return decodeBase64(body)
-	}
-
+	if (enc === 'base64') return decodeBase64(body)
 	if (enc === 'quoted-printable') {
 		const unwrapped = body.replace(/=\r?\n/g, '')
-		const result: number[] = []
-		let i = 0
-
-		while (i < unwrapped.length) {
-			if (unwrapped[i] === '=' && i + 2 < unwrapped.length) {
-				const hex = unwrapped.slice(i + 1, i + 3)
-				if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
-					result.push(parseInt(hex, 16))
-					i += 3
-					continue
-				}
-			}
-			result.push(unwrapped.charCodeAt(i))
-			i++
-		}
-
-		return new Uint8Array(result)
+		return new Uint8Array(
+			Array.from(unwrapped.matchAll(/=[0-9A-Fa-f]{2}|[\s\S]/g), (match) =>
+				match[0].length === 3 ? parseInt(match[0].slice(1), 16) : match[0].charCodeAt(0),
+			),
+		)
 	}
-
 	return encodeUTF8(body)
 }
 

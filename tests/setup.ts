@@ -14,11 +14,7 @@
  * building ASCII/latin1 wire-format fixtures without `node:buffer`.
  */
 export function asciiBytes(text: string): Uint8Array {
-	const bytes = new Uint8Array(text.length)
-	for (let index = 0; index < text.length; index += 1) {
-		bytes[index] = text.charCodeAt(index)
-	}
-	return bytes
+	return Uint8Array.from({ length: text.length }, (_, index) => text.charCodeAt(index))
 }
 
 /**
@@ -56,12 +52,17 @@ export function buildEml(
  * `text/plain`. `depth` of `0` yields a plain (non-multipart) message.
  */
 export function buildNestedMultipart(depth: number): Uint8Array {
-	let body = 'leaf'
-	let contentType = 'text/plain'
-	for (let level = depth - 1; level >= 0; level -= 1) {
-		const boundary = `level${level}`
-		body = `--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n${body}\r\n--${boundary}--`
-		contentType = `multipart/mixed; boundary="${boundary}"`
-	}
-	return buildEml([['Content-Type', contentType]], body)
+	const levels = Array.from(
+		{ length: Math.max(0, Math.floor(depth)) },
+		(_, index) => depth - 1 - index,
+	).reverse()
+	const contentType =
+		levels.length === 0 ? 'text/plain' : `multipart/mixed; boundary="level${levels[0]}"`
+	const prefixes = levels.map((level, index) => {
+		const next = levels[index + 1]
+		const content = next === undefined ? 'text/plain' : `multipart/mixed; boundary="level${next}"`
+		return `--level${level}\r\nContent-Type: ${content}\r\n\r\n`
+	})
+	const suffixes = levels.toReversed().map((level) => `\r\n--level${level}--`)
+	return buildEml([['Content-Type', contentType]], [...prefixes, 'leaf', ...suffixes].join(''))
 }

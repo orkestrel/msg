@@ -17,6 +17,14 @@ import {
 } from '@src/core'
 import { captureError, requireValue } from '@orkestrel/test'
 
+function readPayload(payload: Uint8Array): Uint8Array {
+	return payload
+}
+
+function readByte(): Uint8Array {
+	return new Uint8Array([1])
+}
+
 // burnCFB reconstitutes a CFB (Compound Binary File) from a flat list of
 // MSGBurnerEntry descriptors — root storage at index 0, its children
 // reachable through `children` indices. The load-bearing behavior: entries
@@ -59,8 +67,10 @@ describe('burnCFB — minimal burn', () => {
 
 describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 	it('burns and round-trips a stream one byte UNDER the cutoff (mini-stream)', () => {
-		const payload = new Uint8Array(MSG_MINI_STREAM_CUTOFF - 1)
-		for (let i = 0; i < payload.length; i++) payload[i] = (i * 5 + 1) % 251
+		const payload = Uint8Array.from(
+			{ length: MSG_MINI_STREAM_CUTOFF - 1 },
+			(_, i) => (i * 5 + 1) % 251,
+		)
 
 		const entries: MSGBurnerEntry[] = [
 			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
@@ -73,7 +83,7 @@ describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 			{
 				name: '__substg1.0_37010102',
 				category: MSG_CATEGORY_DOCUMENT,
-				binaryProvider: () => payload,
+				binaryProvider: readPayload.bind(undefined, payload),
 				length: payload.length,
 			},
 		]
@@ -87,8 +97,10 @@ describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 	})
 
 	it('burns and round-trips a stream one byte OVER the cutoff (standard sectors)', () => {
-		const payload = new Uint8Array(MSG_MINI_STREAM_CUTOFF + 1)
-		for (let i = 0; i < payload.length; i++) payload[i] = (i * 7 + 3) % 251
+		const payload = Uint8Array.from(
+			{ length: MSG_MINI_STREAM_CUTOFF + 1 },
+			(_, i) => (i * 7 + 3) % 251,
+		)
 
 		const entries: MSGBurnerEntry[] = [
 			{ name: 'Root Entry', category: MSG_CATEGORY_ROOT, children: [1], length: 0 },
@@ -101,7 +113,7 @@ describe('burnCFB — mini-stream cutoff boundary (round-trip)', () => {
 			{
 				name: '__substg1.0_37010102',
 				category: MSG_CATEGORY_DOCUMENT,
-				binaryProvider: () => payload,
+				binaryProvider: readPayload.bind(undefined, payload),
 				length: payload.length,
 			},
 		]
@@ -148,7 +160,7 @@ describe('burnCFB — multiple children and directory ordering', () => {
 			entries.push({
 				name: '__substg1.0_37010102',
 				category: MSG_CATEGORY_DOCUMENT,
-				binaryProvider: () => payload,
+				binaryProvider: readPayload.bind(undefined, payload),
 				length: payload.length,
 			})
 		})
@@ -208,7 +220,7 @@ describe('burnCFB — directory name cap', () => {
 			{
 				name,
 				category: MSG_CATEGORY_DOCUMENT,
-				binaryProvider: () => new Uint8Array([1]),
+				binaryProvider: readByte,
 				length: 1,
 			},
 		]
@@ -226,7 +238,7 @@ describe('burnCFB — directory name cap', () => {
 			{
 				name,
 				category: MSG_CATEGORY_DOCUMENT,
-				binaryProvider: () => new Uint8Array([1]),
+				binaryProvider: readByte,
 				length: 1,
 			},
 		]
@@ -262,7 +274,7 @@ describe('burnCFB — structurally invalid entries (never a raw TypeError)', () 
 			{
 				name: oversized,
 				category: MSG_CATEGORY_DOCUMENT,
-				binaryProvider: () => new Uint8Array([1]),
+				binaryProvider: readByte,
 				length: 1,
 			},
 		]

@@ -4,6 +4,7 @@
 
 import type { GuideModule } from '@orkestrel/guide'
 import type { MSGAttachment, MSGBurnerEntry, MSGFieldData } from '@src/core'
+import { captureError } from '@orkestrel/test'
 import { GuideCommand } from '@orkestrel/guide/server'
 import { readInventory } from '@orkestrel/test/server'
 import { createVitest } from 'vitest/node'
@@ -211,12 +212,9 @@ await new GuideCommand({
 		})
 
 		it('dispatches the Errors fence on the code and reads the context back', () => {
-			let caught: unknown
-			try {
+			const caught = captureError(() => {
 				throw new MSGError('MALFORMED', 'bad input', { offset: 8 })
-			} catch (error) {
-				caught = error
-			}
+			})
 
 			expect(isMSGError(caught)).toBe(true)
 			expect(isMSGError(caught) && caught.code === 'MALFORMED').toBe(true)

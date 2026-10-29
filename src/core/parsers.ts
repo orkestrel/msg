@@ -36,31 +36,18 @@ export function parseMIMEPart(raw: string, depth = 0): MIMEPart {
 	const primaryType = ((contentType?.value ?? '').split(';')[0] ?? '').trim().toLowerCase()
 	const boundary = contentType?.params.get('boundary') ?? ''
 
-	const parts: MIMEPart[] = []
-	if (primaryType.startsWith('multipart/') && boundary !== '') {
-		const delimiter = '--' + boundary
-		const lines = body.split('\n')
-		let current: string[] = []
-		let inside = false
-
-		for (const line of lines) {
-			const trimmed = line.trimEnd()
-			if (trimmed === delimiter + '--') {
-				if (inside && current.length > 0) parts.push(parseMIMEPart(current.join('\n'), depth + 1))
-				inside = false
-				break
-			}
-			if (trimmed === delimiter) {
-				if (inside && current.length > 0) parts.push(parseMIMEPart(current.join('\n'), depth + 1))
-				current = []
-				inside = true
-				continue
-			}
-			if (inside) current.push(line)
-		}
-
-		if (inside && current.length > 0) parts.push(parseMIMEPart(current.join('\n'), depth + 1))
-	}
+	const lines = body.split('\n')
+	const delimiter = '--' + boundary
+	const closing = lines.findIndex((line) => line.trimEnd() === delimiter + '--')
+	const end = closing === -1 ? lines.length : closing
+	const starts =
+		primaryType.startsWith('multipart/') && boundary !== ''
+			? lines.slice(0, end).flatMap((line, index) => (line.trimEnd() === delimiter ? [index] : []))
+			: []
+	const parts = starts.flatMap((start, index) => {
+		const content = lines.slice(start + 1, starts[index + 1] ?? end)
+		return content.length === 0 ? [] : [parseMIMEPart(content.join('\n'), depth + 1)]
+	})
 
 	return { headers, body, parts }
 }

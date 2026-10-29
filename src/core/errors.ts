@@ -1,5 +1,5 @@
 import type { MSGErrorCode } from './types.js'
-import { isInstance } from '@orkestrel/contract'
+import { holds, INTRINSICS, isRecord } from '@orkestrel/contract'
 
 // An MSG/EML parsing or burning failure `throw`s an `MSGError`
 // carrying a machine-readable `code`, so a `catch` branches on `error.code`
@@ -30,6 +30,7 @@ export class MSGError extends Error {
 
 	constructor(code: MSGErrorCode, message: string, context?: Readonly<Record<string, unknown>>) {
 		super(message)
+		Object.defineProperty(this, Symbol.for('@orkestrel/msg.MSGError'), { value: this })
 		this.name = 'MSGError'
 		this.code = code
 		if (context !== undefined) this.context = context
@@ -38,6 +39,11 @@ export class MSGError extends Error {
 
 /**
  * Narrows an unknown caught (or `Failure.error`) value to an {@link MSGError}.
+ *
+ * @remarks
+ * Accepts branded errors from another installed copy and subclasses without testing `name`.
+ * Requires a global Error instance, its own self brand, a declared code, and valid context.
+ * Refuses transparent proxies and unbranded look-alikes.
  *
  * @param value - The value to test (typically a `catch` binding or a `Result.error`)
  * @returns True if `value` is an {@link MSGError}; false otherwise
@@ -54,5 +60,20 @@ export class MSGError extends Error {
  * ```
  */
 export function isMSGError(value: unknown): value is MSGError {
-	return isInstance(value, MSGError)
+	return holds(() => {
+		if (!(value instanceof Error) || INTRINSICS.prototype(value) === Error.prototype) return false
+		const brand = INTRINSICS.describe(value, Symbol.for('@orkestrel/msg.MSGError'))
+		if (brand?.value !== value) return false
+		const code = INTRINSICS.reflect.read(value, 'code')
+		const context = INTRINSICS.reflect.read(value, 'context')
+		return (
+			(code === 'UNSUPPORTED' ||
+				code === 'MALFORMED' ||
+				code === 'CYCLE' ||
+				code === 'RANGE' ||
+				code === 'BURN') &&
+			(context === undefined || isRecord(context)) &&
+			typeof INTRINSICS.reflect.read(value, 'message') === 'string'
+		)
+	})
 }

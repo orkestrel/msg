@@ -112,15 +112,15 @@ A `Shape` cell holds the constant's declared type.
 | `MSG_PREFIX_RECIPIENT`              | const | `string`                                                     | Holds the storage name prefix for a recipient entry (`'__recip_version1.0'`).                                                               |
 | `MSG_PREFIX_DOCUMENT`               | const | `string`                                                     | Holds the stream name prefix for a MAPI property document (substg) entry (`'__substg1.'`).                                                  |
 | `MSG_PREFIX_NAMEID`                 | const | `string`                                                     | Holds the storage name of the named-property mapping table (`'__nameid_version1.0'`).                                                       |
-| `MSG_FIELD_NAME_MAPPING`            | const | `Readonly<Record<string, string>>`                           | Maps a MAPI property tag's hex to its short field name, for example `subject`.                                                              |
-| `MSG_FIELD_FULL_NAME_MAPPING`       | const | `Readonly<Record<string, string>>`                           | Maps a compound tag's full 8-character hex to its fully-qualified field name.                                                               |
-| `MSG_FIELD_TYPE_MAPPING`            | const | `Readonly<Record<string, MSGFieldType>>`                     | Maps a MAPI property type tag's hex to its `MSGFieldType` decode tag.                                                                       |
+| `MSG_FIELD_NAMES`                   | const | `Readonly<Record<string, string>>`                           | Maps a MAPI property tag's hex to its short field name, for example `subject`.                                                              |
+| `MSG_FIELD_FULL_NAMES`              | const | `Readonly<Record<string, string>>`                           | Maps a compound tag's full 8-character hex to its fully-qualified field name.                                                               |
+| `MSG_FIELD_TYPES`                   | const | `Readonly<Record<string, MSGFieldType>>`                     | Maps a MAPI property type tag's hex to its `MSGFieldType` decode tag.                                                                       |
 | `MSG_FIELD_CLASS_ATTACHMENT_DATA`   | const | `string`                                                     | Identifies the MAPI tag naming an attachment's binary data stream (`'3701'`).                                                               |
 | `MSG_FIELD_DIR_TYPE_INNER_MSG`      | const | `string`                                                     | Names the MAPI type tag identifying an embedded `.msg` attachment storage (`'000d'`).                                                       |
 | `MSG_MAPI_RECIPIENT_TO`             | const | `number`                                                     | Names the MAPI recipient-type value mapping to `MSGRecipientRole` `'to'` (`1`).                                                             |
 | `MSG_MAPI_RECIPIENT_CC`             | const | `number`                                                     | Names the MAPI recipient-type value mapping to `MSGRecipientRole` `'cc'` (`2`).                                                             |
 | `MSG_MAPI_RECIPIENT_BCC`            | const | `number`                                                     | Names the MAPI recipient-type value mapping to `MSGRecipientRole` `'bcc'` (`3`).                                                            |
-| `MSG_PIDLID_MAPPING`                | const | `Readonly<Record<string, Readonly<Record<number, string>>>>` | Maps a named-property set GUID to its long-ID-to-field-name table.                                                                          |
+| `MSG_PIDLIDS`                       | const | `Readonly<Record<string, Readonly<Record<number, string>>>>` | Maps a named-property set GUID to its long-ID-to-field-name table.                                                                          |
 | `MSG_BURNER_INTS_PER_SECTOR`        | const | `number`                                                     | Holds the number of 32-bit FAT and DIFAT entries one standard sector carries (128).                                                         |
 | `MSG_BURNER_DIFAT_HEADER_SLOTS`     | const | `number`                                                     | Caps the DIFAT entries stored directly in the CFB header (109).                                                                             |
 | `MSG_BURNER_FAT_SECTOR_MARKER`      | const | `number`                                                     | Marks a sector as itself part of the FAT (-3).                                                                                              |
@@ -156,6 +156,10 @@ try {
 	if (isMSGError(error) && error.code === 'MALFORMED') console.log(error.context)
 }
 ```
+
+The constructor adds an own, non-enumerable, non-writable symbol brand whose value is the error itself.
+The guard accepts errors from another installed copy and subclasses without requiring a particular name.
+It refuses transparent proxies, unbranded errors, and plain objects carrying the brand.
 
 ### Helpers
 
@@ -299,7 +303,7 @@ parseMIMEPart('Subject: Hi\n\nBody text') // MIMEPart — { headers, body: 'Body
 
 ### Validators
 
-The from-unknown guards from [`validators.ts`](../src/core/validators.ts). Each validates an arbitrary `unknown` value from scratch, against the `EmailChain`, `EmailMessage`, or `EmailAttachment` shape, or the `EmailFormat` union, using `isRecord` from `@orkestrel/contract`. `isMSGError` differs: it narrows a value that is already typed.
+The from-unknown guards from [`validators.ts`](../src/core/validators.ts). Each validates an arbitrary `unknown` value from scratch, against the `EmailChain`, `EmailMessage`, or `EmailAttachment` shape, or the `EmailFormat` union, using `isRecord` from `@orkestrel/contract`. `isMSGError` validates the global Error instance, its package brand, its code, and its context.
 
 In a guard table a `Shape` cell holds the type the guard narrows to.
 

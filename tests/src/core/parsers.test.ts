@@ -105,14 +105,12 @@ describe('extractMessageFromMSG', () => {
 			],
 			attachments: [],
 		}
-		const reader = {
+		const message: EmailMessage = extractMessageFromMSG({
 			parse: () => fields,
 			attachment: () => {
 				throw new Error('no attachments')
 			},
-		}
-
-		const message: EmailMessage = extractMessageFromMSG(reader)
+		})
 
 		expect(message.subject).toBe('Hi there')
 		expect(message.from).toBe('Alice <alice@example.com>')
@@ -128,14 +126,12 @@ describe('extractMessageFromMSG', () => {
 				{ category: 'attachment', fileName: 'broken.bin', mimeType: 'application/octet-stream' },
 			],
 		}
-		const reader = {
+		const message: EmailMessage = extractMessageFromMSG({
 			parse: () => fields,
 			attachment: () => {
 				throw new Error('corrupt stream')
 			},
-		}
-
-		const message = extractMessageFromMSG(reader)
+		})
 
 		expect(message.attachments).toEqual([])
 	})
@@ -159,6 +155,6 @@ describe('decodeUTF8', () => {
 	})
 
 	it('never throws on invalid bytes — yields U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xff]))).toBe('�')
+		expect(decodeUTF8(new Uint8Array([0xff]))).toBe('\uFFFD')
 	})
 })
