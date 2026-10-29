@@ -8,14 +8,11 @@ import {
 	MSG_HEADER_BAT_COUNT_OFFSET,
 	MSG_HEADER_BAT_START_OFFSET,
 	MSG_HEADER_PROPERTY_START_OFFSET,
-	MSG_L_BIG_BLOCK_SIZE,
-	MSG_L_BIG_BLOCK_MARK,
 	MSG_PROP_NAME_SIZE_OFFSET,
-	MSG_SECTOR_SIZE,
 } from '@src/core'
 import { attempt } from '@orkestrel/contract'
 import { captureError, requireValue } from '@orkestrel/test'
-import { patchBytes, buildEml } from '../../setup.js'
+import { patchBytes, buildEml, toArrayBuffer, withByteOffset, bigBlockSizeOf } from '../../setup.js'
 import { readFixture } from '../../setupServer.js'
 
 // Mirrors src/core/MSG.ts 1:1, as `.claude/rules/tests.md` § Test contract requires:
@@ -24,31 +21,6 @@ import { readFixture } from '../../setupServer.js'
 // createMSG wraps the same construction, surfacing every parse failure as a
 // Failure<MSGError> in the returned Result<MSGInterface, MSGError> rather
 // than throwing it; an unexpected non-MSGError error still propagates.
-
-// === Fixture helpers
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-	const buffer = new ArrayBuffer(bytes.byteLength)
-	new Uint8Array(buffer).set(bytes)
-	return buffer
-}
-
-// Copies `bytes` into a larger backing buffer at a non-zero byte offset,
-// returning a Uint8Array VIEW over that offset — exercises the constructor's
-// `byteOffset`-aware DataView setup rather than a fresh, zero-offset buffer.
-function withByteOffset(bytes: Uint8Array, offset: number): Uint8Array {
-	const backing = new Uint8Array(offset + bytes.byteLength + 8)
-	backing.set(bytes, offset)
-	return new Uint8Array(backing.buffer, offset, bytes.byteLength)
-}
-
-// Reads the CFB sector-size mark (byte 30) the same way MSG does, so
-// test-side header patches land at the sector the parser itself will visit.
-function bigBlockSizeOf(bytes: Uint8Array): number {
-	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-	const mark = view.getUint8(30)
-	return mark === MSG_L_BIG_BLOCK_MARK ? MSG_L_BIG_BLOCK_SIZE : MSG_SECTOR_SIZE
-}
 
 // === eml parsing
 

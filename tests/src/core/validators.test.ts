@@ -1,5 +1,6 @@
 import type { EmailAttachment, EmailChain, EmailMessage } from '@src/core'
 import { describe, expect, it } from 'vitest'
+import { MatchingAttachment } from '../../setup.js'
 import { isEmailAttachment, isEmailChain, isEmailFormat, isEmailMessage } from '@src/core'
 
 // validators.ts holds the structural type guards used at the boundary of the
@@ -28,12 +29,6 @@ const validMessage: EmailMessage = {
 const validChain: EmailChain = {
 	format: 'eml',
 	messages: [validMessage],
-}
-
-class MatchingAttachment {
-	name = 'file.txt'
-	mimeType = 'text/plain'
-	bytes = new Uint8Array([1, 2, 3, 4])
 }
 
 describe('isEmailFormat', () => {

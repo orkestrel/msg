@@ -16,14 +16,7 @@ import {
 	MSG_SECTOR_SIZE,
 } from '@src/core'
 import { captureError, requireValue } from '@orkestrel/test'
-
-function readPayload(payload: Uint8Array): Uint8Array {
-	return payload
-}
-
-function readByte(): Uint8Array {
-	return new Uint8Array([1])
-}
+import { readPayload, readByte } from '../../setup.js'
 
 // burnCFB reconstitutes a CFB (Compound Binary File) from a flat list of
 // MSGBurnerEntry descriptors — root storage at index 0, its children

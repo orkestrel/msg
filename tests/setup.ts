@@ -1,3 +1,5 @@
+import { MSG_L_BIG_BLOCK_SIZE, MSG_L_BIG_BLOCK_MARK, MSG_SECTOR_SIZE } from '@src/core'
+
 // Base test setup — environment-agnostic helpers loaded first by every
 // Vitest project (`setupFiles[0]`). Keep this file free of `node:*` and of
 // `document` / `window`: this package is core-only.
@@ -65,4 +67,42 @@ export function buildNestedMultipart(depth: number): Uint8Array {
 	})
 	const suffixes = levels.toReversed().map((level) => `\r\n--level${level}--`)
 	return buildEml([['Content-Type', contentType]], [...prefixes, 'leaf', ...suffixes].join(''))
+}
+
+/** Provides an attachment-shaped class instance for guard rejection. */
+export class MatchingAttachment {
+	name = 'file.txt'
+	mimeType = 'text/plain'
+	bytes = new Uint8Array([1, 2, 3, 4])
+}
+
+/** Returns the supplied bytes for a binary provider. */
+export function readPayload(payload: Uint8Array): Uint8Array {
+	return payload
+}
+
+/** Returns a single byte for a binary provider. */
+export function readByte(): Uint8Array {
+	return new Uint8Array([1])
+}
+
+/** Copies bytes into an independent array buffer. */
+export function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+	const buffer = new ArrayBuffer(bytes.byteLength)
+	new Uint8Array(buffer).set(bytes)
+	return buffer
+}
+
+/** Copies bytes into a view with a nonzero byte offset. */
+export function withByteOffset(bytes: Uint8Array, offset: number): Uint8Array {
+	const backing = new Uint8Array(offset + bytes.byteLength + 8)
+	backing.set(bytes, offset)
+	return new Uint8Array(backing.buffer, offset, bytes.byteLength)
+}
+
+/** Reads the sector size indicated by a CFB header. */
+export function bigBlockSizeOf(bytes: Uint8Array): number {
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+	const mark = view.getUint8(30)
+	return mark === MSG_L_BIG_BLOCK_MARK ? MSG_L_BIG_BLOCK_SIZE : MSG_SECTOR_SIZE
 }
