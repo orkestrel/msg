@@ -1,5 +1,5 @@
 import type { MSGErrorCode } from './types.js'
-import { holds, INTRINSICS, isRecord } from '@orkestrel/contract'
+import { holds, INTRINSICS, isFunction, isObject } from '@orkestrel/contract'
 
 // An MSG/EML parsing or burning failure `throw`s an `MSGError`
 // carrying a machine-readable `code`, so a `catch` branches on `error.code`
@@ -72,7 +72,7 @@ export function isMSGError(value: unknown): value is MSGError {
 				code === 'CYCLE' ||
 				code === 'RANGE' ||
 				code === 'BURN') &&
-			(context === undefined || isRecord(context)) &&
+			(context === undefined || isObject(context) || isFunction(context)) &&
 			typeof INTRINSICS.reflect.read(value, 'message') === 'string'
 		)
 	})

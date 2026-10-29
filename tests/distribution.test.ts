@@ -943,6 +943,7 @@ const brand = Symbol.for('@orkestrel/msg.MSGError')
 class Derived extends original.MSGError {}
 const subclass = new Derived('MALFORMED', 'subclass')
 subclass.name = 'Derived'
+assert.equal(new Set(modules.map((entry) => entry.MSGError)).size, modules.length)
 for (const owner of modules) {
 	const error = new owner.MSGError('MALFORMED', 'broken', { offset: 8 })
 	const descriptor = Object.getOwnPropertyDescriptor(error, brand)
