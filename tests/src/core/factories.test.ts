@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { createMSG, isSuccess, isFailure, isMSGError } from '@src/core'
+import { isFailure, isSuccess } from '@orkestrel/contract'
+import { createMSG, isMSGError } from '@src/core'
 import { readFixture } from '../../setupServer.js'
 
 // createMSG — the Result-returning boundary counterpart to `new MSG()`

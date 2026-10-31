@@ -25,7 +25,8 @@ error still propagates. Reach for `new MSG()` directly when a thrown
 `MSGError` is the control flow you want:
 
 ```ts
-import { createMSG, isSuccess } from '@orkestrel/msg'
+import { isSuccess } from '@orkestrel/contract'
+import { createMSG } from '@orkestrel/msg'
 
 const result = createMSG({ bytes, name: 'message.eml' })
 if (isSuccess(result)) {
@@ -42,8 +43,8 @@ names in braces, `?` marking an optional member and `plus` introducing its call-
 and a type alias's own type literal with a union's arms escaped as `\|`. `MSGInterface`'s
 call-signature members are documented under [`## Methods`](#methods). `Success`, `Failure`, and
 `Result` are the originating types from `@orkestrel/contract` (mirrored at
-[`contract.md`](contract.md)); this package's `success` / `failure` / `isSuccess` / `isFailure`
-wrap them and do not re-export the types.
+[`contract.md`](contract.md)), which also exports the `success`, `failure`, `isSuccess`, and
+`isFailure` functions; import each from there, because this package re-exports none of them.
 
 | Name                  | Kind      | Signature                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Summary                                                                                                                                                                                                                                    |
 | --------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -163,14 +164,10 @@ It refuses transparent proxies, unbranded errors, and plain objects carrying the
 
 ### Helpers
 
-Pure, mostly-total leaves from [`helpers.ts`](../src/core/helpers.ts) — the `Result` constructors/guards, the CFB byte/string/UUID readers and magic check `MSG.ts` composes, the format sniffer, and the MIME/text codecs `parsers.ts` and `shapers.ts` compose.
+Pure, mostly-total leaves from [`helpers.ts`](../src/core/helpers.ts) — the CFB byte/string/UUID readers and magic check `MSG.ts` composes, the format sniffer, and the MIME/text codecs `parsers.ts` and `shapers.ts` compose.
 
 | Name                     | Kind     | Signature                                                                            | Summary                                                                                                                                                                                        |
 | ------------------------ | -------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `success`                | function | `<T>(value: T) => Success<T>`                                                        | Constructs a `Success` wrapping a value.                                                                                                                                                       |
-| `failure`                | function | `<E>(error: E) => Failure<E>`                                                        | Constructs a `Failure` wrapping an error.                                                                                                                                                      |
-| `isSuccess`              | function | `<T, E>(result: Result<T, E>) => result is Success<T>`                               | Narrows a `Result` to a `Success`.                                                                                                                                                             |
-| `isFailure`              | function | `<T, E>(result: Result<T, E>) => result is Failure<E>`                               | Narrows a `Result` to a `Failure`.                                                                                                                                                             |
 | `truncateAtNull`         | function | `(text: string) => string`                                                           | Truncates a string at its first `\0` character.                                                                                                                                                |
 | `readUTF16String`        | function | `(view: DataView, offset: number, charCount: number) => string`                      | Reads a UTF-16LE string out of a `DataView`, throwing when the requested range exceeds the view's bounds.                                                                                      |
 | `decodeText`             | function | `(bytes: Uint8Array, encoding?: MSGEncoding) => string`                              | Decodes bytes into a string with a pure-ES decoder, dispatching on the named encoding. Default: `windows-1252`.                                                                                |
@@ -184,8 +181,7 @@ Pure, mostly-total leaves from [`helpers.ts`](../src/core/helpers.ts) — the `R
 | `decodeForgivingBase64`  | function | `(text: string) => Uint8Array`                                                       | Decodes a Base64 string into raw bytes without relying on `atob`, ignoring ASCII whitespace and tolerating missing padding.                                                                    |
 | `encodeLossyUTF8`        | function | `(text: string) => Uint8Array`                                                       | Encodes a string into UTF-8 bytes, pairing surrogates and encoding a lone (unpaired) surrogate as U+FFFD.                                                                                      |
 | `decodeLossyUTF8`        | function | `(bytes: Uint8Array) => string`                                                      | Decodes UTF-8 bytes into a string WHATWG-style: an invalid byte sequence decodes as U+FFFD rather than throwing.                                                                               |
-| `decodeLatin1`           | function | `(bytes: Uint8Array) => string`                                                      | Decodes Latin-1 (ISO-8859-1) bytes into a string, byte-for-code-point.                                                                                                                         |
-| `decodeLossyWindows1252` | function | `(bytes: Uint8Array) => string`                                                      | Decodes Windows-1252 bytes into a string, resolving the `0x80`\-`0x9F` range through `WINDOWS_1252_HIGH` and otherwise matching `decodeLatin1`.                                                |
+| `decodeLossyWindows1252` | function | `(bytes: Uint8Array) => string`                                                      | Decodes Windows-1252 bytes into a string, resolving the `0x80`\-`0x9F` range through `WINDOWS_1252_HIGH` and otherwise matching `decodeLatin1` from `@orkestrel/codec`.                        |
 | `resolveEncoding`        | function | `(label: string \| undefined) => MSGEncoding`                                        | Resolves a free-form charset label, as a MIME `charset` parameter carries it, to a supported `MSGEncoding`, falling back to `FALLBACK_CHARSET`'s encoding for an unrecognized or absent label. |
 | `detectFormat`           | function | `(name: string \| undefined, mime: string \| undefined) => EmailFormat \| undefined` | Derives the `EmailFormat` from a file name, a MIME type, or both, answering `undefined` when neither hints at a format.                                                                        |
 | `parseMIMEHeaders`       | function | `(text: string) => ReadonlyMap<string, MIMEHeader>`                                  | Parses an RFC 2822 / MIME header block, folding continuation lines.                                                                                                                            |
@@ -197,10 +193,6 @@ Pure, mostly-total leaves from [`helpers.ts`](../src/core/helpers.ts) — the `R
 
 ```ts
 import {
-	success,
-	failure,
-	isSuccess,
-	isFailure,
 	truncateAtNull,
 	readUTF16String,
 	fileTimeToUTCString,
@@ -213,7 +205,6 @@ import {
 	decodeForgivingBase64,
 	encodeLossyUTF8,
 	decodeLossyUTF8,
-	decodeLatin1,
 	decodeLossyWindows1252,
 	resolveEncoding,
 	detectFormat,
@@ -231,9 +222,6 @@ computeSectors(100, 64) // 2
 compareCFBName('a', 'b') // negative
 isMSGFile(new DataView(new Uint8Array(8).buffer)) // false — no CFB magic
 detectFormat('message.eml', undefined) // 'eml'
-isSuccess(success(1)) // true
-isFailure(failure(new Error())) // true
-decodeLatin1(new Uint8Array([65])) // 'A'
 decodeLossyWindows1252(new Uint8Array([65])) // 'A'
 resolveEncoding('utf-8') // 'utf-8'
 formatEmailAddress('A', 'a@x.dev') // 'A <a@x.dev>'
@@ -366,10 +354,11 @@ From [`factories.ts`](../src/core/factories.ts).
 
 #### Parse an email file and read its format
 
-Narrows the `createMSG` `Result` with `isSuccess` before reading the parsed `chain`'s format.
+Narrows the `createMSG` `Result` with `isSuccess` from `@orkestrel/contract` before reading the parsed `chain`'s format.
 
 ```ts
-import { createMSG, isSuccess } from '@orkestrel/msg'
+import { isSuccess } from '@orkestrel/contract'
+import { createMSG } from '@orkestrel/msg'
 
 const result = createMSG(bytes)
 if (isSuccess(result)) {
@@ -396,7 +385,8 @@ The public methods of the behavioral interfaces this package publishes. `options
 | `attachment` | `MSGAttachment` | Reads attachment binary content by zero-based index, returning its `name` and `bytes`.    |
 
 ```ts
-import { createMSG, isSuccess } from '@orkestrel/msg'
+import { isSuccess } from '@orkestrel/contract'
+import { createMSG } from '@orkestrel/msg'
 
 const result = createMSG(bytes) // Uint8Array of a .msg file
 if (isSuccess(result)) {
@@ -425,7 +415,7 @@ A caller extracting an embedded `.msg` attachment and burning it standalone goes
 - [`tests/src/core/MSG.test.ts`](../tests/src/core/MSG.test.ts) — construction (`.eml` / `.msg` / malformed input), `chain`, `fields`, `attachment`, `burn`, and the embedded-`.msg` extraction path.
 - [`tests/src/core/factories.test.ts`](../tests/src/core/factories.test.ts) — `createMSG`'s `Result` contract (`Success`/`Failure`, with parse failures surfaced as `Failure<MSGError>` rather than thrown).
 - [`tests/src/core/parsers.test.ts`](../tests/src/core/parsers.test.ts) — `isMSGFile` / `decodeLossyUTF8` / `detectFormat` / `parseMIMEPart` / `extractMessage` / `extractMessageFromMSG`, incl. `MIME_MAX_DEPTH` cycle guarding.
-- [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — the `Result` constructors/guards, CFB byte/string/UUID readers, and MIME/text codecs.
+- [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — the CFB byte/string/UUID readers and the MIME/text codecs.
 - [`tests/src/core/shapers.test.ts`](../tests/src/core/shapers.test.ts) — `burnCFB` validity, mini-stream/FAT/DIFAT boundaries, red-black directory ordering, cycle/name limits, and real-parser round trips.
 - [`tests/src/core/validators.test.ts`](../tests/src/core/validators.test.ts) — `isEmailFormat` / `isEmailAttachment` / `isEmailMessage` / `isEmailChain` soundness on well-formed and malformed input.
 - `MSGError` shape and `isMSGError` narrowing are covered across [`tests/src/core/MSG.test.ts`](../tests/src/core/MSG.test.ts), [`tests/src/core/factories.test.ts`](../tests/src/core/factories.test.ts), and [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — no standalone `errors.test.ts` file exists.

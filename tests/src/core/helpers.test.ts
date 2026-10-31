@@ -1,10 +1,5 @@
-import type { Result } from '@orkestrel/contract'
 import { describe, expect, it } from 'vitest'
 import {
-	success,
-	failure,
-	isSuccess,
-	isFailure,
 	isMSGFile,
 	MSG_FILE_HEADER,
 	truncateAtNull,
@@ -19,7 +14,6 @@ import {
 	decodeForgivingBase64,
 	encodeLossyUTF8,
 	decodeLossyUTF8,
-	decodeLatin1,
 	decodeLossyWindows1252,
 	resolveEncoding,
 	detectFormat,
@@ -41,35 +35,6 @@ import { readFixture } from '../../setupServer.js'
 // leaves `.claude/rules/architecture.md` § Functions and orchestration places there,
 // with no instance state. Each exported helper gets its own describe block covering
 // happy path, edge cases, and error paths.
-
-describe('Result helpers', () => {
-	describe('success / failure', () => {
-		it('success wraps a value', () => {
-			expect(success(42)).toEqual({ success: true, value: 42 })
-		})
-
-		it('failure wraps an error', () => {
-			const error = new Error('boom')
-			expect(failure(error)).toEqual({ success: false, error })
-		})
-	})
-
-	describe('isSuccess / isFailure', () => {
-		it('narrows a Success result', () => {
-			const result: Result<number> = success(1)
-			expect(isSuccess(result)).toBe(true)
-			expect(isFailure(result)).toBe(false)
-			expect(isSuccess(result) && result.value).toBe(1)
-		})
-
-		it('narrows a Failure result', () => {
-			const result: Result<number, string> = failure('nope')
-			expect(isSuccess(result)).toBe(false)
-			expect(isFailure(result)).toBe(true)
-			expect(isFailure(result) && result.error).toBe('nope')
-		})
-	})
-})
 
 describe('decodeForgivingBase64', () => {
 	it('decodes a canonical padded vector', () => {
@@ -144,14 +109,6 @@ describe('encodeLossyUTF8 / decodeLossyUTF8', () => {
 	it('decodeLossyUTF8 still round-trips a valid mixed ASCII/multibyte string', () => {
 		const text = 'Hello café €100 😀'
 		expect(decodeLossyUTF8(encodeLossyUTF8(text))).toBe(text)
-	})
-})
-
-describe('decodeLatin1', () => {
-	it('maps bytes 0x41 / 0xE9 / 0xFF to their code points', () => {
-		expect(decodeLatin1(new Uint8Array([0x41]))).toBe('A')
-		expect(decodeLatin1(new Uint8Array([0xe9]))).toBe('é')
-		expect(decodeLatin1(new Uint8Array([0xff]))).toBe('ÿ')
 	})
 })
 
@@ -230,6 +187,11 @@ describe('decodeText', () => {
 
 	it('decodes latin1', () => {
 		expect(decodeText(new Uint8Array([0x41, 0xe9]), 'latin1')).toBe('Aé')
+	})
+
+	it('decodes a latin1 C1 byte as its own code point, unlike windows-1252', () => {
+		expect(decodeText(new Uint8Array([0x80, 0xff]), 'latin1')).toBe('\u0080ÿ')
+		expect(decodeText(new Uint8Array([0x80, 0xff]), 'windows-1252')).toBe('€ÿ')
 	})
 
 	it('decodes windows-1252 (default when encoding is omitted)', () => {

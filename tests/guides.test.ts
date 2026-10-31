@@ -39,7 +39,7 @@ await new GuideCommand({
 	reader: readInventory,
 	runner: createVitest,
 }).execute(async ({ files, report, root, rows }) => {
-	const { isRecord } = await import('@orkestrel/contract')
+	const { isRecord, isSuccess } = await import('@orkestrel/contract')
 	const { computeSymbolKey, findMissingSymbols } = await import('@orkestrel/guide')
 	const { requireValue } = await import('@orkestrel/test')
 	const {
@@ -47,7 +47,6 @@ await new GuideCommand({
 		compareCFBName,
 		computeSectors,
 		createMSG,
-		decodeLatin1,
 		decodeMIMEEncoding,
 		decodeMIMEText,
 		decodeLossyUTF8,
@@ -56,7 +55,6 @@ await new GuideCommand({
 		encodeLossyUTF8,
 		extractMessage,
 		extractMessageFromMSG,
-		failure,
 		fileTimeToUTCString,
 		formatEmailAddress,
 		inferExtension,
@@ -64,10 +62,8 @@ await new GuideCommand({
 		isEmailChain,
 		isEmailFormat,
 		isEmailMessage,
-		isFailure,
 		isMSGError,
 		isMSGFile,
-		isSuccess,
 		MSG,
 		MSG_CATEGORY_ROOT,
 		MSGError,
@@ -76,7 +72,6 @@ await new GuideCommand({
 		readUTF16String,
 		resolveEncoding,
 		roundUpToMultiple,
-		success,
 		toHexLower,
 		truncateAtNull,
 	} = await import('@src/core')
@@ -235,9 +230,6 @@ await new GuideCommand({
 			expect(compareCFBName('a', 'b')).toBeLessThan(0)
 			expect(isMSGFile(new DataView(new Uint8Array(8).buffer))).toBe(false)
 			expect(detectFormat('message.eml', undefined)).toBe('eml')
-			expect(isSuccess(success(1))).toBe(true)
-			expect(isFailure(failure(new Error()))).toBe(true)
-			expect(decodeLatin1(new Uint8Array([65]))).toBe('A')
 			expect(decodeLossyWindows1252(new Uint8Array([65]))).toBe('A')
 			expect(resolveEncoding('utf-8')).toBe('utf-8')
 			expect(formatEmailAddress('A', 'a@x.dev')).toBe('A <a@x.dev>')

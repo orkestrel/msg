@@ -1,5 +1,6 @@
-import { attempt, type Failure, type Result, type Success } from '@orkestrel/contract'
 import type { EmailFormat, MIMEHeader, MSGEncoding } from './types.js'
+import { decodeLatin1 } from '@orkestrel/codec'
+import { attempt } from '@orkestrel/contract'
 import { MSGError } from './errors.js'
 import {
 	EML_EXTENSIONS,
@@ -12,58 +13,6 @@ import {
 	UTF8_SEQUENCE_MINIMUM,
 	WINDOWS_1252_HIGH,
 } from './constants.js'
-
-// === Result Helpers
-
-/**
- * Constructs a {@link Success} wrapping a value.
- *
- * @param value - The value to wrap
- * @returns A `Success<T>` result
- *
- * @example
- * ```ts
- * const result = success(42) // { success: true, value: 42 }
- * ```
- */
-export function success<T>(value: T): Success<T> {
-	return { success: true, value }
-}
-
-/**
- * Constructs a {@link Failure} wrapping an error.
- *
- * @param error - The error to wrap
- * @returns A `Failure<E>` result
- *
- * @example
- * ```ts
- * const result = failure(new MSGError('MALFORMED', 'bad input'))
- * ```
- */
-export function failure<E>(error: E): Failure<E> {
-	return { success: false, error }
-}
-
-/**
- * Narrows a {@link Result} to a {@link Success}.
- *
- * @param result - Result to check
- * @returns True if result is Success; false otherwise
- */
-export function isSuccess<T, E>(result: Result<T, E>): result is Success<T> {
-	return result.success
-}
-
-/**
- * Narrows a {@link Result} to a {@link Failure}.
- *
- * @param result - Result to check
- * @returns True if result is Failure; false otherwise
- */
-export function isFailure<T, E>(result: Result<T, E>): result is Failure<E> {
-	return !result.success
-}
 
 // === MSG Helpers
 
@@ -383,26 +332,8 @@ export function decodeLossyUTF8(bytes: Uint8Array): string {
 }
 
 /**
- * Decodes Latin-1 (ISO-8859-1) bytes into a string, byte-for-code-point.
- *
- * @param bytes - Latin-1 byte array
- * @returns Decoded string
- *
- * @example
- * ```ts
- * decodeLatin1(new Uint8Array([0xe9])) // 'é'
- * ```
- */
-export function decodeLatin1(bytes: Uint8Array): string {
-	return Iterator.from(bytes)
-		.map((byte) => String.fromCharCode(byte))
-		.toArray()
-		.join('')
-}
-
-/**
  * Decodes Windows-1252 bytes into a string, resolving the `0x80`-`0x9F` range through
- * {@link WINDOWS_1252_HIGH} and otherwise matching {@link decodeLatin1}.
+ * {@link WINDOWS_1252_HIGH} and otherwise matching {@link decodeLatin1} from `@orkestrel/codec`.
  *
  * @param bytes - Windows-1252 byte array
  * @returns Decoded string

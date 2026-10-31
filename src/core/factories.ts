@@ -1,8 +1,8 @@
 import type { Result } from '@orkestrel/contract'
 import type { MSGError } from './errors.js'
 import type { MSGInput, MSGInterface, MSGOptions } from './types.js'
+import { failure, success } from '@orkestrel/contract'
 import { MSG } from './MSG.js'
-import { success, failure } from './helpers.js'
 import { isMSGError } from './errors.js'
 
 // === MSG
@@ -24,7 +24,8 @@ import { isMSGError } from './errors.js'
  *
  * @example Parse an email file and read its format
  * ```ts
- * import { createMSG, isSuccess } from '@orkestrel/msg'
+ * import { isSuccess } from '@orkestrel/contract'
+ * import { createMSG } from '@orkestrel/msg'
  *
  * const result = createMSG(bytes)
  * if (isSuccess(result)) {

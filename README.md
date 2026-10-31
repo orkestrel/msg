@@ -19,12 +19,13 @@ npm install @orkestrel/msg
 
 - Node.js >= 22
 - ESM + CJS (dual-format build)
-- Runtime dependency: `@orkestrel/contract`
+- Runtime dependencies: `@orkestrel/codec` and `@orkestrel/contract`
 
 ## Usage
 
 ```ts
-import { createMSG, isSuccess } from '@orkestrel/msg'
+import { isSuccess } from '@orkestrel/contract'
+import { createMSG } from '@orkestrel/msg'
 
 const result = createMSG({ bytes, name: 'message.msg' }) // bytes: Uint8Array
 

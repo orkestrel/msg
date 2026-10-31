@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
 	MSG,
 	createMSG,
-	isSuccess,
 	isMSGError,
 	isMSGFile,
 	MSG_HEADER_BAT_COUNT_OFFSET,
@@ -10,7 +9,7 @@ import {
 	MSG_HEADER_PROPERTY_START_OFFSET,
 	MSG_PROP_NAME_SIZE_OFFSET,
 } from '@src/core'
-import { attempt } from '@orkestrel/contract'
+import { attempt, isSuccess } from '@orkestrel/contract'
 import { captureError, requireValue } from '@orkestrel/test'
 import { patchBytes, buildEml, toArrayBuffer, withByteOffset, bigBlockSizeOf } from '../../setup.js'
 import { readFixture } from '../../setupServer.js'
