@@ -5,7 +5,7 @@ import {
 	extractMessage,
 	extractMessageFromMSG,
 	isMSGFile,
-	decodeUTF8,
+	decodeLossyUTF8,
 } from '@src/core'
 import type { EmailMessage, MSGFieldData } from '@src/core'
 import { asciiBytes, buildEml } from '../../setup.js'
@@ -48,7 +48,7 @@ describe('detectFormat', () => {
 
 describe('parseMIMEPart', () => {
 	it('parses a small multipart message into its child parts', () => {
-		const raw = decodeUTF8(
+		const raw = decodeLossyUTF8(
 			buildEml(
 				[['Content-Type', 'multipart/mixed; boundary="XYZ"']],
 				'--XYZ\r\nContent-Type: text/plain\r\n\r\nHello\r\n--XYZ\r\nContent-Type: text/html\r\n\r\n<p>Hi</p>\r\n--XYZ--',
@@ -63,7 +63,7 @@ describe('parseMIMEPart', () => {
 	})
 
 	it('parses a non-multipart message with an empty parts list', () => {
-		const raw = decodeUTF8(buildEml([['Content-Type', 'text/plain']], 'just text'))
+		const raw = decodeLossyUTF8(buildEml([['Content-Type', 'text/plain']], 'just text'))
 		const part = parseMIMEPart(raw)
 		expect(part.parts).toEqual([])
 		expect(part.body).toBe('just text')
@@ -72,7 +72,7 @@ describe('parseMIMEPart', () => {
 
 describe('extractMessage', () => {
 	it('extracts from/to/cc/subject/text from a MIME tree', () => {
-		const raw = decodeUTF8(
+		const raw = decodeLossyUTF8(
 			buildEml(
 				[
 					['From', 'Alice <alice@example.com>'],
@@ -149,12 +149,12 @@ describe('isMSGFile', () => {
 	})
 })
 
-describe('decodeUTF8', () => {
+describe('decodeLossyUTF8', () => {
 	it('round-trips ASCII', () => {
-		expect(decodeUTF8(asciiBytes('Hello'))).toBe('Hello')
+		expect(decodeLossyUTF8(asciiBytes('Hello'))).toBe('Hello')
 	})
 
 	it('never throws on invalid bytes — yields U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xff]))).toBe('\uFFFD')
+		expect(decodeLossyUTF8(new Uint8Array([0xff]))).toBe('\uFFFD')
 	})
 })

@@ -16,11 +16,11 @@ import {
 	roundUpToMultiple,
 	computeSectors,
 	compareCFBName,
-	decodeBase64,
-	encodeUTF8,
-	decodeUTF8,
+	decodeForgivingBase64,
+	encodeLossyUTF8,
+	decodeLossyUTF8,
 	decodeLatin1,
-	decodeWindows1252,
+	decodeLossyWindows1252,
 	resolveEncoding,
 	detectFormat,
 	parseMIMEHeaders,
@@ -71,79 +71,79 @@ describe('Result helpers', () => {
 	})
 })
 
-describe('decodeBase64', () => {
+describe('decodeForgivingBase64', () => {
 	it('decodes a canonical padded vector', () => {
-		expect(Array.from(decodeBase64('aGVsbG8='))).toEqual([104, 101, 108, 108, 111])
+		expect(Array.from(decodeForgivingBase64('aGVsbG8='))).toEqual([104, 101, 108, 108, 111])
 	})
 
 	it('tolerates missing padding', () => {
-		expect(Array.from(decodeBase64('aGVsbG8'))).toEqual([104, 101, 108, 108, 111])
+		expect(Array.from(decodeForgivingBase64('aGVsbG8'))).toEqual([104, 101, 108, 108, 111])
 	})
 
 	it('ignores embedded whitespace and newlines', () => {
-		expect(Array.from(decodeBase64('aGVs\n bG8=\t'))).toEqual([104, 101, 108, 108, 111])
+		expect(Array.from(decodeForgivingBase64('aGVs\n bG8=\t'))).toEqual([104, 101, 108, 108, 111])
 	})
 
 	it('throws MSGError MALFORMED on an invalid character', () => {
-		const thrown = captureError(() => decodeBase64('!!!!'))
+		const thrown = captureError(() => decodeForgivingBase64('!!!!'))
 		expect(isMSGError(thrown)).toBe(true)
 		expect(isMSGError(thrown) && thrown.code).toBe('MALFORMED')
 	})
 })
 
-describe('encodeUTF8 / decodeUTF8', () => {
+describe('encodeLossyUTF8 / decodeLossyUTF8', () => {
 	it('round-trips ASCII', () => {
-		expect(decodeUTF8(encodeUTF8('Hello'))).toBe('Hello')
+		expect(decodeLossyUTF8(encodeLossyUTF8('Hello'))).toBe('Hello')
 	})
 
 	it('round-trips a 2-byte sequence (e-acute)', () => {
-		expect(decodeUTF8(encodeUTF8('é'))).toBe('é')
-		expect(Array.from(encodeUTF8('é'))).toEqual([0xc3, 0xa9])
+		expect(decodeLossyUTF8(encodeLossyUTF8('é'))).toBe('é')
+		expect(Array.from(encodeLossyUTF8('é'))).toEqual([0xc3, 0xa9])
 	})
 
 	it('round-trips a 3-byte sequence (Euro sign)', () => {
-		expect(decodeUTF8(encodeUTF8('€'))).toBe('€')
-		expect(Array.from(encodeUTF8('€'))).toEqual([0xe2, 0x82, 0xac])
+		expect(decodeLossyUTF8(encodeLossyUTF8('€'))).toBe('€')
+		expect(Array.from(encodeLossyUTF8('€'))).toEqual([0xe2, 0x82, 0xac])
 	})
 
 	it('round-trips a 4-byte sequence (an emoji via surrogate pair)', () => {
-		expect(decodeUTF8(encodeUTF8('😀'))).toBe('😀')
-		expect(Array.from(encodeUTF8('😀'))).toEqual([0xf0, 0x9f, 0x98, 0x80])
+		expect(decodeLossyUTF8(encodeLossyUTF8('😀'))).toBe('😀')
+		expect(Array.from(encodeLossyUTF8('😀'))).toEqual([0xf0, 0x9f, 0x98, 0x80])
 	})
 
-	it('decodeUTF8 never throws on invalid bytes — yields U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xff]))).toBe('\uFFFD')
+	it('decodeLossyUTF8 never throws on invalid bytes — yields U+FFFD', () => {
+		expect(decodeLossyUTF8(new Uint8Array([0xff]))).toBe('\uFFFD')
 	})
 
-	it('decodeUTF8 never throws on a truncated multibyte sequence', () => {
+	it('decodeLossyUTF8 never throws on a truncated multibyte sequence', () => {
 		// 0xe2 announces a 3-byte sequence but only one continuation byte follows.
-		expect(decodeUTF8(new Uint8Array([0xe2, 0x82]))).toBe('\uFFFD\uFFFD')
+		expect(decodeLossyUTF8(new Uint8Array([0xe2, 0x82]))).toBe('\uFFFD\uFFFD')
 	})
 
-	it('encodeUTF8 encodes a lone (unpaired) surrogate as U+FFFD', () => {
-		expect(Array.from(encodeUTF8('\ud800'))).toEqual([0xef, 0xbf, 0xbd])
+	it('encodeLossyUTF8 encodes a lone (unpaired) surrogate as U+FFFD', () => {
+		expect(Array.from(encodeLossyUTF8('\ud800'))).toEqual([0xef, 0xbf, 0xbd])
 	})
 
-	it('decodeUTF8 rejects an overlong 2-byte encoding of NUL as U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xc0, 0x80]))).toBe('\uFFFD')
+	it('decodeLossyUTF8 rejects an overlong 2-byte encoding of NUL as U+FFFD', () => {
+		expect(decodeLossyUTF8(new Uint8Array([0xc0, 0x80]))).toBe('\uFFFD')
 	})
 
-	it('decodeUTF8 rejects an overlong 2-byte encoding of "<" (never decodes to it)', () => {
-		expect(decodeUTF8(new Uint8Array([0xc0, 0xbc]))).not.toContain('<')
-		expect(decodeUTF8(new Uint8Array([0xc0, 0xbc]))).toBe('\uFFFD')
+	it('decodeLossyUTF8 rejects an overlong 2-byte encoding of "<" (never decodes to it)', () => {
+		expect(decodeLossyUTF8(new Uint8Array([0xc0, 0xbc]))).not.toContain('<')
+		expect(decodeLossyUTF8(new Uint8Array([0xc0, 0xbc]))).toBe('\uFFFD')
 	})
 
-	it('decodeUTF8 rejects a surrogate code point as U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xed, 0xa0, 0x80]))).toBe('\uFFFD')
+	it('decodeLossyUTF8 rejects a surrogate code point as U+FFFD', () => {
+		expect(decodeLossyUTF8(new Uint8Array([0xed, 0xa0, 0x80]))).toBe('\uFFFD')
 	})
 
-	it('decodeUTF8 rejects an out-of-range code point (> U+10FFFF) as U+FFFD', () => {
-		expect(decodeUTF8(new Uint8Array([0xf7, 0xbf, 0xbf, 0xbf]))).toBe('\uFFFD')
+	it('decodeLossyUTF8 rejects an out-of-range code point (> U+10FFFF) as U+FFFD', () => {
+		expect(decodeLossyUTF8(new Uint8Array([0xf7, 0xbf, 0xbf, 0xbf]))).toBe('\uFFFD')
 	})
 
-	it('decodeUTF8 still round-trips a valid mixed ASCII/multibyte string', () => {
+	it('decodeLossyUTF8 still round-trips a valid mixed ASCII/multibyte string', () => {
 		const text = 'Hello café €100 😀'
-		expect(decodeUTF8(encodeUTF8(text))).toBe(text)
+		expect(decodeLossyUTF8(encodeLossyUTF8(text))).toBe(text)
 	})
 })
 
@@ -155,17 +155,17 @@ describe('decodeLatin1', () => {
 	})
 })
 
-describe('decodeWindows1252', () => {
+describe('decodeLossyWindows1252', () => {
 	it('maps 0x80 to the Euro sign', () => {
-		expect(decodeWindows1252(new Uint8Array([0x80]))).toBe('€')
+		expect(decodeLossyWindows1252(new Uint8Array([0x80]))).toBe('€')
 	})
 
 	it('maps 0x9C to the oe-ligature', () => {
-		expect(decodeWindows1252(new Uint8Array([0x9c]))).toBe('œ')
+		expect(decodeLossyWindows1252(new Uint8Array([0x9c]))).toBe('œ')
 	})
 
 	it('leaves plain ASCII unchanged', () => {
-		expect(decodeWindows1252(new Uint8Array([0x41, 0x42]))).toBe('AB')
+		expect(decodeLossyWindows1252(new Uint8Array([0x41, 0x42]))).toBe('AB')
 	})
 })
 
@@ -225,7 +225,7 @@ describe('decodeText', () => {
 	})
 
 	it('decodes utf-8', () => {
-		expect(decodeText(encodeUTF8('café'), 'utf-8')).toBe('café')
+		expect(decodeText(encodeLossyUTF8('café'), 'utf-8')).toBe('café')
 	})
 
 	it('decodes latin1', () => {
@@ -447,7 +447,7 @@ describe('parseMIMEHeaders', () => {
 
 describe('parseMIMEPart', () => {
 	it('parses a small multipart message into its child parts', () => {
-		const raw = decodeUTF8(
+		const raw = decodeLossyUTF8(
 			buildEml(
 				[['Content-Type', 'multipart/mixed; boundary="XYZ"']],
 				'--XYZ\r\nContent-Type: text/plain\r\n\r\nHello\r\n--XYZ\r\nContent-Type: text/html\r\n\r\n<p>Hi</p>\r\n--XYZ--',
@@ -464,14 +464,14 @@ describe('parseMIMEPart', () => {
 	})
 
 	it('parses a non-multipart message with an empty parts list', () => {
-		const raw = decodeUTF8(buildEml([['Content-Type', 'text/plain']], 'just text'))
+		const raw = decodeLossyUTF8(buildEml([['Content-Type', 'text/plain']], 'just text'))
 		const part = parseMIMEPart(raw)
 		expect(part.parts).toEqual([])
 		expect(part.body).toBe('just text')
 	})
 
 	it('throws MSGError CYCLE once nesting exceeds the maximum depth', () => {
-		const raw = decodeUTF8(buildNestedMultipart(60))
+		const raw = decodeLossyUTF8(buildNestedMultipart(60))
 
 		const thrown = captureError(() => parseMIMEPart(raw))
 
@@ -487,34 +487,34 @@ describe('decodeMIMEEncoding', () => {
 
 	it('decodes a quoted-printable body with an escaped byte', () => {
 		const decoded = decodeMIMEEncoding('Caf=C3=A9', 'quoted-printable')
-		expect(decodeUTF8(decoded)).toBe('Café')
+		expect(decodeLossyUTF8(decoded)).toBe('Café')
 	})
 
 	it('unwraps a quoted-printable soft line break (=CRLF)', () => {
 		const decoded = decodeMIMEEncoding('Hello=\r\nWorld', 'quoted-printable')
-		expect(decodeUTF8(decoded)).toBe('HelloWorld')
+		expect(decodeLossyUTF8(decoded)).toBe('HelloWorld')
 	})
 
 	it('treats an unknown encoding as raw text (utf-8 encoded)', () => {
 		expect(Array.from(decodeMIMEEncoding('hi', 'unknown-encoding'))).toEqual(
-			Array.from(encodeUTF8('hi')),
+			Array.from(encodeLossyUTF8('hi')),
 		)
 	})
 
 	it('preserves a literal "=" when followed by a non-hex nibble (=3G is not consumed as 3)', () => {
 		const decoded = decodeMIMEEncoding('A=3GB', 'quoted-printable')
-		expect(decodeUTF8(decoded)).toBe('A=3GB')
+		expect(decodeLossyUTF8(decoded)).toBe('A=3GB')
 	})
 
 	it('still decodes a valid escaped byte (=41 -> A)', () => {
 		const decoded = decodeMIMEEncoding('=41', 'quoted-printable')
-		expect(decodeUTF8(decoded)).toBe('A')
+		expect(decodeLossyUTF8(decoded)).toBe('A')
 	})
 })
 
 describe('decodeMIMEText', () => {
 	it('decodes a base64 body with the utf-8 charset', () => {
-		const body = Buffer.from(encodeUTF8('café')).toString('base64')
+		const body = Buffer.from(encodeLossyUTF8('café')).toString('base64')
 		expect(decodeMIMEText(body, 'base64', 'utf-8')).toBe('café')
 	})
 
@@ -581,7 +581,7 @@ describe('formatEmailAddress', () => {
 
 describe('extractMessage', () => {
 	it('extracts from/to/cc/subject/date/text and a disposition attachment', () => {
-		const raw = decodeUTF8(
+		const raw = decodeLossyUTF8(
 			buildEml(
 				[
 					['From', 'Alice <alice@example.com>'],
@@ -616,17 +616,17 @@ describe('extractMessage', () => {
 		const [attachment] = message.attachments
 		expect(attachment?.name).toBe('file.txt')
 		expect(attachment?.mimeType).toBe('text/plain')
-		expect(decodeUTF8(requireValue(attachment).bytes)).toBe('attachment content')
+		expect(decodeLossyUTF8(requireValue(attachment).bytes)).toBe('attachment content')
 	})
 
 	it('leaves date undefined when the Date header is absent', () => {
-		const raw = decodeUTF8(buildEml([['Content-Type', 'text/plain']], 'no date here'))
+		const raw = decodeLossyUTF8(buildEml([['Content-Type', 'text/plain']], 'no date here'))
 		const message = extractMessage(parseMIMEPart(raw))
 		expect(message.date).toBeUndefined()
 	})
 
 	it('leaves date undefined when the Date header is malformed', () => {
-		const raw = decodeUTF8(
+		const raw = decodeLossyUTF8(
 			buildEml(
 				[
 					['Date', 'not a real date'],
@@ -640,7 +640,7 @@ describe('extractMessage', () => {
 	})
 
 	it('collects an html part separately from a text part', () => {
-		const raw = decodeUTF8(
+		const raw = decodeLossyUTF8(
 			buildEml(
 				[['Content-Type', 'multipart/mixed; boundary="BBB"']],
 				'--BBB\r\nContent-Type: text/plain\r\n\r\nplain body\r\n' +

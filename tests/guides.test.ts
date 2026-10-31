@@ -50,10 +50,10 @@ await new GuideCommand({
 		decodeLatin1,
 		decodeMIMEEncoding,
 		decodeMIMEText,
-		decodeUTF8,
-		decodeWindows1252,
+		decodeLossyUTF8,
+		decodeLossyWindows1252,
 		detectFormat,
-		encodeUTF8,
+		encodeLossyUTF8,
 		extractMessage,
 		extractMessageFromMSG,
 		failure,
@@ -238,14 +238,14 @@ await new GuideCommand({
 			expect(isSuccess(success(1))).toBe(true)
 			expect(isFailure(failure(new Error()))).toBe(true)
 			expect(decodeLatin1(new Uint8Array([65]))).toBe('A')
-			expect(decodeWindows1252(new Uint8Array([65]))).toBe('A')
+			expect(decodeLossyWindows1252(new Uint8Array([65]))).toBe('A')
 			expect(resolveEncoding('utf-8')).toBe('utf-8')
 			expect(formatEmailAddress('A', 'a@x.dev')).toBe('A <a@x.dev>')
 			expect(inferExtension('image/png')).toBe('.png')
 			expect(decodeMIMEEncoding('aGk=', 'base64')).toStrictEqual(new Uint8Array([104, 105]))
 			expect(decodeMIMEText('aGk=', 'base64', 'utf-8')).toBe('hi')
-			expect(encodeUTF8('hi')).toStrictEqual(new Uint8Array([104, 105]))
-			expect(decodeUTF8(new Uint8Array([65]))).toBe('A')
+			expect(encodeLossyUTF8('hi')).toStrictEqual(new Uint8Array([104, 105]))
+			expect(decodeLossyUTF8(new Uint8Array([65]))).toBe('A')
 		})
 
 		it('reads the Helpers fence trailing block, whose values the comments describe', () => {

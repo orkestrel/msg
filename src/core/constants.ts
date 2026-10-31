@@ -476,7 +476,7 @@ export const MIME_MAX_DEPTH = 50
  * continuation bytes (1, 2, or 3).
  *
  * @remarks
- * Enforces the WHATWG requirement that a sequence encode the shortest possible form: `decodeUTF8`
+ * Enforces the WHATWG requirement that a sequence encode the shortest possible form: `decodeLossyUTF8`
  * rejects an overlong encoding, a code point below its sequence's minimum, rather than accepting
  * it.
  */

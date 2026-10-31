@@ -76,7 +76,7 @@ import {
 	MSG_MAX_HIERARCHY_DEPTH,
 } from './constants.js'
 import {
-	decodeUTF8,
+	decodeLossyUTF8,
 	detectFormat,
 	isMSGFile,
 	truncateAtNull,
@@ -196,7 +196,7 @@ export class MSG implements MSGInterface {
 			const message = extractMessageFromMSG(source)
 			this.#chain = { format: 'msg', messages: [message] }
 		} else {
-			const text = decodeUTF8(bytes)
+			const text = decodeLossyUTF8(bytes)
 			const root = parseMIMEPart(text)
 			const message = extractMessage(root)
 			this.#chain = { format: 'eml', messages: [message] }

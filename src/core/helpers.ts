@@ -130,9 +130,9 @@ export function decodeText(bytes: Uint8Array, encoding?: MSGEncoding): string {
 		const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 		return readUTF16String(view, 0, Math.floor(bytes.length / 2))
 	}
-	if (resolved === 'utf-8') return decodeUTF8(bytes)
+	if (resolved === 'utf-8') return decodeLossyUTF8(bytes)
 	if (resolved === 'latin1') return decodeLatin1(bytes)
-	return decodeWindows1252(bytes)
+	return decodeLossyWindows1252(bytes)
 }
 
 /**
@@ -263,10 +263,10 @@ export function compareCFBName(a: string, b: string): number {
  *
  * @example
  * ```ts
- * decodeBase64('SGVsbG8=') // Uint8Array [72, 101, 108, 108, 111]
+ * decodeForgivingBase64('SGVsbG8=') // Uint8Array [72, 101, 108, 108, 111]
  * ```
  */
-export function decodeBase64(text: string): Uint8Array {
+export function decodeForgivingBase64(text: string): Uint8Array {
 	const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 	const cleaned = text.replace(/[ \t\n\r\f\v]+/g, '').replace(/=+$/, '')
 	const steps: Array<{
@@ -300,10 +300,10 @@ export function decodeBase64(text: string): Uint8Array {
  *
  * @example
  * ```ts
- * encodeUTF8('A') // Uint8Array [65]
+ * encodeLossyUTF8('A') // Uint8Array [65]
  * ```
  */
-export function encodeUTF8(text: string): Uint8Array {
+export function encodeLossyUTF8(text: string): Uint8Array {
 	return new Uint8Array(
 		Array.from(text).flatMap((character) => {
 			const point = character.codePointAt(0) ?? 0
@@ -337,11 +337,11 @@ export function encodeUTF8(text: string): Uint8Array {
  *
  * @example
  * ```ts
- * decodeUTF8(new Uint8Array([65])) // 'A'
- * decodeUTF8(new Uint8Array([0xff])) // '\uFFFD'
+ * decodeLossyUTF8(new Uint8Array([65])) // 'A'
+ * decodeLossyUTF8(new Uint8Array([0xff])) // '\uFFFD'
  * ```
  */
-export function decodeUTF8(bytes: Uint8Array): string {
+export function decodeLossyUTF8(bytes: Uint8Array): string {
 	const steps: Array<{ readonly text: string; readonly next: number }> = []
 	while (true) {
 		const index = steps.at(-1)?.next ?? 0
@@ -409,10 +409,10 @@ export function decodeLatin1(bytes: Uint8Array): string {
  *
  * @example
  * ```ts
- * decodeWindows1252(new Uint8Array([0x93])) // '“'
+ * decodeLossyWindows1252(new Uint8Array([0x93])) // '“'
  * ```
  */
-export function decodeWindows1252(bytes: Uint8Array): string {
+export function decodeLossyWindows1252(bytes: Uint8Array): string {
 	return Iterator.from(bytes)
 		.map((byte) => {
 			if (byte >= 0x80 && byte <= 0x9f) {
@@ -549,7 +549,7 @@ export function parseMIMEHeaders(text: string): ReadonlyMap<string, MIMEHeader> 
  */
 export function decodeMIMEEncoding(body: string, encoding: string): Uint8Array {
 	const enc = encoding.toLowerCase()
-	if (enc === 'base64') return decodeBase64(body)
+	if (enc === 'base64') return decodeForgivingBase64(body)
 	if (enc === 'quoted-printable') {
 		const unwrapped = body.replace(/=\r?\n/g, '')
 		return new Uint8Array(
@@ -558,7 +558,7 @@ export function decodeMIMEEncoding(body: string, encoding: string): Uint8Array {
 			),
 		)
 	}
-	return encodeUTF8(body)
+	return encodeLossyUTF8(body)
 }
 
 /**
