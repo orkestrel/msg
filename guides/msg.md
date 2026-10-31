@@ -38,13 +38,11 @@ if (isSuccess(result)) {
 
 ### Types
 
-From [`types.ts`](../src/core/types.ts). A `Shape` cell holds an interface's data members as bare
-names in braces, `?` marking an optional member and `plus` introducing its call-signature members,
-and a type alias's own type literal with a union's arms escaped as `\|`. `MSGInterface`'s
-call-signature members are documented under [`## Methods`](#methods). `Success`, `Failure`, and
-`Result` are the originating types from `@orkestrel/contract` (mirrored at
-[`contract.md`](contract.md)), which also exports the `success`, `failure`, `isSuccess`, and
-`isFailure` functions; import each from there, because this package re-exports none of them.
+From [`types.ts`](../src/core/types.ts). `MSGInterface`'s call-signature members are documented
+under [`## Methods`](#methods). `Success`, `Failure`, and `Result` are the originating types from
+`@orkestrel/contract` (mirrored at [`contract.md`](contract.md)), which also exports the
+`success`, `failure`, `isSuccess`, and `isFailure` functions; import each from there, because this
+package re-exports none of them.
 
 | Name                  | Kind      | Signature                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Summary                                                                                                                                                                                                                                    |
 | --------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -74,8 +72,6 @@ call-signature members are documented under [`## Methods`](#methods). `Success`,
 ### Constants
 
 The CFB layout offsets and sizes, the MSG/EML sniffing tables, the MAPI field name mappings, and the burner's geometry, from [`constants.ts`](../src/core/constants.ts). None of them carries runtime behavior. Every value is a fixed offset, a size, or a lookup table that the parsing and burning code in `MSG.ts`, `parsers.ts`, and `helpers.ts` reads.
-
-A `Shape` cell holds the constant's declared type.
 
 | Name                                | Kind  | Signature                                                    | Summary                                                                                                                                     |
 | ----------------------------------- | ----- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -292,8 +288,6 @@ parseMIMEPart('Subject: Hi\n\nBody text') // MIMEPart — { headers, body: 'Body
 ### Validators
 
 The from-unknown guards from [`validators.ts`](../src/core/validators.ts). Each validates an arbitrary `unknown` value from scratch, against the `EmailChain`, `EmailMessage`, or `EmailAttachment` shape, or the `EmailFormat` union, using `isRecord` from `@orkestrel/contract`. `isMSGError` validates the global Error instance, its package brand, its code, and its context.
-
-In a guard table a `Shape` cell holds the type the guard narrows to.
 
 | Name                | Kind     | Signature                                      | Summary                                                                                                                                                           |
 | ------------------- | -------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
